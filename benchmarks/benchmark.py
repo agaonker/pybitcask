@@ -6,37 +6,20 @@ import os
 from pathlib import Path
 import statistics
 from typing import Dict, List, Tuple
-import sqlite3
-import lmdb
 from pybitcask import Bitcask
 
-class StorageEngine:
-    def __init__(self, name: str, path: str):
-        self.name = name
+class PyBitcaskEngine:
+    def __init__(self, path: str):
         self.path = path
         Path(path).mkdir(parents=True, exist_ok=True)
+        self.db = None
     
-    def setup(self):
-        raise NotImplementedError
-    
-    def teardown(self):
-        raise NotImplementedError
-    
-    def put(self, key: str, value: str):
-        raise NotImplementedError
-    
-    def get(self, key: str) -> str:
-        raise NotImplementedError
-    
-    def delete(self, key: str):
-        raise NotImplementedError
-
-class PyBitcaskEngine(StorageEngine):
     def setup(self):
         self.db = Bitcask(self.path)
     
     def teardown(self):
-        self.db.close()
+        if self.db:
+            self.db.close()
     
     def put(self, key: str, value: str):
         self.db.put(key, value)
@@ -47,131 +30,127 @@ class PyBitcaskEngine(StorageEngine):
     def delete(self, key: str):
         self.db.delete(key)
 
-class SQLiteEngine(StorageEngine):
-    def setup(self):
-        self.conn = sqlite3.connect(os.path.join(self.path, 'test.db'))
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)')
-    
-    def teardown(self):
-        self.conn.close()
-    
-    def put(self, key: str, value: str):
-        self.cursor.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', (key, value))
-        self.conn.commit()
-    
-    def get(self, key: str) -> str:
-        self.cursor.execute('SELECT value FROM kv WHERE key = ?', (key,))
-        result = self.cursor.fetchone()
-        return result[0] if result else None
-    
-    def delete(self, key: str):
-        self.cursor.execute('DELETE FROM kv WHERE key = ?', (key,))
-        self.conn.commit()
-
-class LMDBEngine(StorageEngine):
-    def setup(self):
-        self.env = lmdb.open(self.path, map_size=1024*1024*1024)
-        self.txn = self.env.begin(write=True)
-    
-    def teardown(self):
-        self.txn.commit()
-        self.env.close()
-    
-    def put(self, key: str, value: str):
-        self.txn.put(key.encode(), value.encode())
-    
-    def get(self, key: str) -> str:
-        value = self.txn.get(key.encode())
-        return value.decode() if value else None
-    
-    def delete(self, key: str):
-        self.txn.delete(key.encode())
-
-def generate_random_data(size: int) -> List[Tuple[str, str]]:
+def generate_random_data(size: int, value_size: int = 100) -> List[Tuple[str, str]]:
     """Generate random key-value pairs."""
     data = []
     for _ in range(size):
         key = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-        value = ''.join(random.choices(string.ascii_letters + string.digits, k=100))
+        value = ''.join(random.choices(string.ascii_letters + string.digits, k=value_size))
         data.append((key, value))
     return data
 
-def run_benchmark(engine: StorageEngine, data: List[Tuple[str, str]], 
+def run_benchmark(engine: PyBitcaskEngine, data: List[Tuple[str, str]], 
                  operations: int = 1000) -> Dict[str, float]:
-    """Run benchmark tests on the storage engine."""
+    """Run benchmark tests on pybitcask."""
     results = {
         'write_times': [],
         'read_times': [],
-        'delete_times': []
+        'delete_times': [],
+        'batch_write_times': [],
+        'sequential_read_times': [],
+        'random_read_times': []
     }
     
     # Setup
     engine.setup()
     
+    print("\nRunning Write Benchmark...")
     # Write benchmark
     for key, value in data[:operations]:
         start = time.perf_counter()
         engine.put(key, value)
         results['write_times'].append(time.perf_counter() - start)
     
-    # Read benchmark
+    print("Running Read Benchmark...")
+    # Read benchmark (sequential)
     for key, _ in data[:operations]:
         start = time.perf_counter()
         engine.get(key)
-        results['read_times'].append(time.perf_counter() - start)
+        results['sequential_read_times'].append(time.perf_counter() - start)
     
+    print("Running Random Read Benchmark...")
+    # Random read benchmark
+    random_keys = random.sample([key for key, _ in data[:operations]], operations)
+    for key in random_keys:
+        start = time.perf_counter()
+        engine.get(key)
+        results['random_read_times'].append(time.perf_counter() - start)
+    
+    print("Running Delete Benchmark...")
     # Delete benchmark
     for key, _ in data[:operations]:
         start = time.perf_counter()
         engine.delete(key)
         results['delete_times'].append(time.perf_counter() - start)
     
+    # Batch write benchmark
+    print("Running Batch Write Benchmark...")
+    batch_size = 100
+    for i in range(0, operations, batch_size):
+        batch_data = data[i:i+batch_size]
+        start = time.perf_counter()
+        for key, value in batch_data:
+            engine.put(key, value)
+        results['batch_write_times'].append((time.perf_counter() - start) / batch_size)
+    
     # Teardown
     engine.teardown()
     
     # Calculate statistics
-    return {
-        'write_avg': statistics.mean(results['write_times']),
-        'write_std': statistics.stdev(results['write_times']),
-        'read_avg': statistics.mean(results['read_times']),
-        'read_std': statistics.stdev(results['read_times']),
-        'delete_avg': statistics.mean(results['delete_times']),
-        'delete_std': statistics.stdev(results['delete_times'])
-    }
+    stats = {}
+    for op_type, times in results.items():
+        if times:  # Only calculate if we have data
+            stats[f'{op_type}_avg'] = statistics.mean(times)
+            stats[f'{op_type}_std'] = statistics.stdev(times)
+            stats[f'{op_type}_min'] = min(times)
+            stats[f'{op_type}_max'] = max(times)
+    
+    return stats
 
 def main():
     # Configuration
-    data_size = 10000
+    data_sizes = [1000, 10000, 100000]
+    value_sizes = [100, 1000, 10000]  # Different value sizes in bytes
     operations = 1000
-    engines = [
-        ('pybitcask', PyBitcaskEngine),
-        ('sqlite', SQLiteEngine),
-        ('lmdb', LMDBEngine)
-    ]
     
-    # Generate test data
-    data = generate_random_data(data_size)
+    all_results = {}
     
-    # Run benchmarks
-    results = {}
-    for name, engine_class in engines:
-        print(f"\nRunning benchmarks for {name}...")
-        engine = engine_class(name, f"benchmarks/data/{name}")
-        results[name] = run_benchmark(engine, data, operations)
+    for data_size in data_sizes:
+        for value_size in value_sizes:
+            print(f"\nRunning benchmark with data_size={data_size}, value_size={value_size}")
+            
+            # Generate test data
+            data = generate_random_data(data_size, value_size)
+            
+            # Run benchmarks
+            engine = PyBitcaskEngine(f"benchmarks/data/pybitcask_{data_size}_{value_size}")
+            results = run_benchmark(engine, data, min(operations, data_size))
+            
+            # Store results
+            all_results[f"size_{data_size}_value_{value_size}"] = {
+                "data_size": data_size,
+                "value_size": value_size,
+                "operations": min(operations, data_size),
+                "metrics": results
+            }
     
     # Save results
+    Path('benchmarks/results').mkdir(parents=True, exist_ok=True)
     with open('benchmarks/results/benchmark_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(all_results, f, indent=2)
     
-    # Print results
-    print("\nBenchmark Results:")
+    # Print summary
+    print("\nBenchmark Results Summary:")
     print("=" * 80)
-    for engine, stats in results.items():
-        print(f"\n{engine.upper()}:")
-        print(f"Write: {stats['write_avg']:.6f} ± {stats['write_std']:.6f} seconds")
-        print(f"Read:  {stats['read_avg']:.6f} ± {stats['read_std']:.6f} seconds")
-        print(f"Delete: {stats['delete_avg']:.6f} ± {stats['delete_std']:.6f} seconds")
+    for config, results in all_results.items():
+        print(f"\nConfiguration: {config}")
+        metrics = results['metrics']
+        print(f"Data Size: {results['data_size']}, Value Size: {results['value_size']} bytes")
+        print(f"Sequential Write: {metrics['write_times_avg']:.6f} ± {metrics['write_times_std']:.6f} seconds")
+        print(f"Sequential Read:  {metrics['sequential_read_times_avg']:.6f} ± {metrics['sequential_read_times_std']:.6f} seconds")
+        print(f"Random Read:     {metrics['random_read_times_avg']:.6f} ± {metrics['random_read_times_std']:.6f} seconds")
+        print(f"Batch Write:     {metrics['batch_write_times_avg']:.6f} ± {metrics['batch_write_times_std']:.6f} seconds")
+        print(f"Delete:          {metrics['delete_times_avg']:.6f} ± {metrics['delete_times_std']:.6f} seconds")
 
 if __name__ == "__main__":
     main() 
