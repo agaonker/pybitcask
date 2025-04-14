@@ -11,6 +11,149 @@ This is a Python implementation of the Bitcask storage engine, which provides an
 - Support for complex data types (via JSON serialization)
 - Tombstone-based deletion
 
+## Use Cases
+
+### Ideal Use Cases
+
+1. **High-Write Throughput Applications**
+   - Log aggregation systems
+   - Event sourcing systems
+   - Real-time analytics data collection
+   - IoT device data storage
+   - Message queue backends
+
+2. **Simple Key-Value Storage Needs**
+   - Session storage
+   - User preferences
+   - Configuration management
+   - Feature flag storage
+   - Cache persistence
+
+3. **Data Recovery Scenarios**
+   - Crash recovery systems
+   - Transaction logs
+   - Audit trails
+   - System state snapshots
+
+### Example: IoT Data Collection System
+
+```python
+from pybitcask import Bitcask
+import time
+import json
+
+class IoTDataStore:
+    def __init__(self, data_dir):
+        self.db = Bitcask(data_dir)
+        
+    def store_sensor_data(self, device_id, sensor_data):
+        # Create a composite key with timestamp
+        key = f"{device_id}:{int(time.time())}"
+        self.db.put(key, json.dumps(sensor_data))
+        
+    def get_device_history(self, device_id, start_time, end_time):
+        results = []
+        for key in self.db.keys():
+            if key.startswith(device_id):
+                timestamp = int(key.split(':')[1])
+                if start_time <= timestamp <= end_time:
+                    results.append(json.loads(self.db.get(key)))
+        return results
+
+# Usage
+store = IoTDataStore("iot_data")
+store.store_sensor_data("sensor1", {"temperature": 25.5, "humidity": 60})
+history = store.get_device_history("sensor1", 0, int(time.time()))
+```
+
+## Scaling Considerations
+
+### Vertical Scaling
+
+1. **Memory Management**
+   - The in-memory index grows with the number of unique keys
+   - Monitor memory usage and implement key expiration if needed
+   - Consider implementing a memory limit with LRU eviction
+
+2. **Disk Space Management**
+   - Implement compaction to remove old/deleted data
+   - Use data partitioning by time or key ranges
+   - Monitor disk usage and implement cleanup policies
+
+### Horizontal Scaling
+
+1. **Sharding Strategies**
+   - Partition data by key ranges
+   - Use consistent hashing for key distribution
+   - Implement a sharding layer for data distribution
+
+2. **Replication**
+   - Implement leader-follower replication
+   - Use quorum-based writes for consistency
+   - Consider eventual consistency for better performance
+
+### Performance Optimization
+
+1. **Batch Operations**
+   - Use batch writes for better throughput
+   - Implement bulk reads for range queries
+   - Consider asynchronous operations for non-critical data
+
+2. **Compression**
+   - Implement value compression for large data
+   - Use efficient serialization formats
+   - Consider columnar storage for analytics
+
+## Limitations and Considerations
+
+1. **Memory Usage**
+   - The entire key space must fit in memory
+   - Consider implementing key expiration
+   - Monitor memory growth with key count
+
+2. **Query Limitations**
+   - No built-in range queries
+   - No secondary indexes
+   - No complex query capabilities
+
+3. **Data Management**
+   - No built-in compaction
+   - Manual cleanup required for deleted data
+   - Disk space grows with updates and deletes
+
+4. **Concurrency**
+   - Single-writer, multiple-reader model
+   - Consider sharding for write scaling
+   - Implement proper locking strategies
+
+5. **Data Types**
+   - Limited to JSON-serializable data
+   - No native support for binary data
+   - Consider implementing custom serialization
+
+## Future Improvements
+
+1. **Core Features**
+   - Implement compaction mechanism
+   - Add support for range queries
+   - Add secondary index support
+   - Implement data compression
+
+2. **Scalability**
+   - Add built-in sharding support
+   - Implement replication
+   - Add distributed coordination
+
+3. **Performance**
+   - Add batch operation support
+   - Implement async operations
+   - Add caching layer
+
+4. **Monitoring**
+   - Add metrics collection
+   - Implement health checks
+   - Add performance monitoring
+
 ## Installation
 
 1. Clone the repository
@@ -127,19 +270,104 @@ The benchmark results demonstrate that this implementation provides:
 - Good scalability with data size
 - Efficient operations for both small and large values
 - Consistent delete performance
-- Fast batch operations
+- Fast batch operations 
 
-## Limitations
+## Comparison with Similar Databases
 
-1. No built-in compaction mechanism
-2. No range queries support
-3. All data must be JSON-serializable
-4. Memory usage proportional to the number of keys
+| Database | Design | Strengths | Weaknesses | Best For | Website |
+|----------|--------|-----------|------------|----------|---------|
+| **pybitcask** | Append-only log + in-memory index | - Extremely fast writes (3-7μs) <br> - Simple implementation <br> - Crash-safe <br> - Minimal dependencies | - No built-in compaction <br> - Single-writer model <br> - Memory grows with keys | - High-write throughput apps <br> - Simple key-value needs <br> - Resource-constrained envs | [GitHub](https://github.com/agaonker/pybitcask) |
+| **Riak Bitcask** | Append-only log + in-memory index | - Production proven <br> - Built-in compaction <br> - Handles billions of keys <br> - Distributed support | - More complex <br> - Erlang dependency | - Distributed systems <br> - High availability needs | [Docs](https://docs.riak.com/riak/kv/latest/setup/planning/backend/bitcask/) |
+| **LevelDB** | LSM tree | - Good read/write balance <br> - Compression support <br> - Large dataset handling | - Complex implementation <br> - Write amplification | - General purpose <br> - Large datasets | [GitHub](https://github.com/google/leveldb) |
+| **BoltDB** | B+tree | - ACID compliant <br> - Very fast reads <br> - Simple API | - Slower writes <br> - Single writer | - Read-heavy workloads <br> - Embedded systems | [GitHub](https://github.com/boltdb/bolt) |
+| **LMDB** | Memory-mapped B+tree | - Extremely fast reads <br> - Zero-copy access <br> - ACID compliant | - Limited concurrency <br> - Memory mapped | - Embedded systems <br> - Fast read access | [Website](https://symas.com/lmdb/) |
 
-## Future Improvements
+### Where pybitcask Shines
 
-1. Implement compaction to reduce disk space usage
-2. Add support for range queries
-3. Implement data compression
-4. Add support for batch operations
-5. Implement replication for distributed systems 
+pybitcask is particularly compelling in these specific scenarios:
+
+1. **Python-Centric Environments**
+   - Pure Python implementation
+   - No external dependencies
+   - Easy to integrate with Python applications
+   - Perfect for Python-based microservices
+
+2. **Resource-Constrained Applications**
+   ```python
+   # Example: Edge computing device with limited resources
+   from pybitcask import Bitcask
+   import psutil
+   
+   class ResourceAwareStore:
+       def __init__(self, data_dir, memory_limit_mb=100):
+           self.db = Bitcask(data_dir)
+           self.memory_limit = memory_limit_mb * 1024 * 1024
+           
+       def check_memory(self):
+           if psutil.Process().memory_info().rss > self.memory_limit:
+               # Implement memory management strategy
+               self.cleanup_old_data()
+               
+       def put(self, key, value):
+           self.check_memory()
+           self.db.put(key, value)
+   ```
+
+3. **High-Write Throughput with Simple Needs**
+   ```python
+   # Example: Log aggregation system
+   class LogAggregator:
+       def __init__(self, data_dir):
+           self.db = Bitcask(data_dir)
+           
+       def ingest_log(self, log_entry):
+           # Fast writes for log entries
+           timestamp = int(time.time() * 1000)  # millisecond precision
+           key = f"log:{timestamp}"
+           self.db.put(key, json.dumps(log_entry))
+           
+       def query_logs(self, start_time, end_time):
+           # Simple time-range query
+           results = []
+           for key in self.db.keys():
+               if key.startswith("log:"):
+                   ts = int(key.split(":")[1])
+                   if start_time <= ts <= end_time:
+                       results.append(json.loads(self.db.get(key)))
+           return results
+   ```
+
+4. **Educational and Prototyping**
+   - Clean, readable implementation
+   - Easy to understand and modify
+   - Good for learning about storage engines
+   - Quick to prototype with
+
+### Performance Comparison
+
+| Operation | pybitcask | LevelDB | BoltDB | LMDB |
+|-----------|-----------|---------|--------|------|
+| Write (small) | 3-7μs | 10-15μs | 50-100μs | 20-30μs |
+| Read (small) | 14-16μs | 5-10μs | 1-2μs | <1μs |
+| Write (10KB) | 27-29μs | 30-40μs | 100-200μs | 40-50μs |
+| Read (10KB) | 26-27μs | 10-15μs | 2-3μs | 1-2μs |
+| Concurrent Reads | Good | Excellent | Excellent | Limited |
+| Concurrent Writes | Single writer | Good | Single writer | Limited |
+
+*Note: Performance numbers are approximate and can vary based on hardware and workload.*
+
+### When to Choose pybitcask
+
+Choose pybitcask when you need:
+1. Simple, reliable key-value storage
+2. High write throughput
+3. Python-native solution
+4. Minimal resource usage
+5. Easy to understand and modify
+
+Avoid pybitcask when you need:
+1. Complex queries
+2. Distributed systems
+3. High concurrency writes
+4. Built-in compaction
+5. Advanced features like transactions 
