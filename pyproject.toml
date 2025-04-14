@@ -29,6 +29,11 @@ test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
 ]
+benchmark = [
+    "lmdb>=1.4.1",
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]
