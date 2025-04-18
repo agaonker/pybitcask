@@ -156,9 +156,94 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
 
 ## Installation
 
-1. Clone the repository
-2. Navigate to the project directory
-3. Install dependencies (if any)
+### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver, written in Rust.
+
+1. Install uv:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/agaonker/pybitcask.git
+   cd pybitcask
+   ```
+
+3. Create and activate a virtual environment:
+   ```bash
+   uv venv .venv
+   source .venv/bin/activate  # On Unix/macOS
+   # or
+   .venv\Scripts\activate  # On Windows
+   ```
+
+4. Install dependencies:
+   ```bash
+   # Install core dependencies (none required)
+   uv pip install .
+
+   # Install test dependencies
+   uv pip install -e ".[test]"
+
+   # Install benchmark dependencies
+   uv pip install -e ".[benchmark]"
+   ```
+
+### Using pip (Alternative)
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/agaonker/pybitcask.git
+   cd pybitcask
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Unix/macOS
+   # or
+   .venv\Scripts\activate  # On Windows
+   ```
+
+3. Install dependencies:
+   ```bash
+   # Install core dependencies (none required)
+   pip install .
+
+   # Install test dependencies
+   pip install -e ".[test]"
+
+   # Install benchmark dependencies
+   pip install -e ".[benchmark]"
+   ```
+
+## Development
+
+### Running Tests
+
+To run the test suite:
+
+```bash
+# Using pytest
+pytest tests/
+
+# With coverage report
+pytest --cov=pybitcask tests/
+```
+
+### Running Benchmarks
+
+To run the benchmarks:
+
+```bash
+# Run benchmarks
+python benchmarks/benchmark.py
+
+# Generate visualizations
+python benchmarks/visualize.py
+```
 
 ## Usage
 
