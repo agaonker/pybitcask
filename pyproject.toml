@@ -5,9 +5,6 @@ description = "A Python implementation of the Bitcask storage engine"
 authors = [
     { name = "Ashish Gaonker", email = "ashish.gec@gmail.com" }
 ]
-dependencies = [
-    "typing-extensions>=4.0.0",
-]
 dependencies = []
 requires-python = ">=3.8"
 readme = "README.md"
@@ -30,16 +27,4 @@ benchmark = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-
-[tool.coverage.run]
-source = ["src"]
-omit = ["tests/*"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "pass",
-] 
+addopts = "-v" 

@@ -2,7 +2,7 @@ import unittest
 import shutil
 import os
 from pathlib import Path
-from ..bitcask import Bitcask
+from pybitcask.bitcask import Bitcask
 
 class TestBitcask(unittest.TestCase):
     def setUp(self):
