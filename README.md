@@ -1,6 +1,6 @@
 # Python Bitcask Implementation
 
-This is a Python implementation of the Bitcask storage engine, which provides an efficient and reliable way to store and retrieve key-value pairs.
+A Python implementation of the Bitcask storage engine, providing efficient and reliable key-value storage.
 
 ## Features
 
@@ -10,6 +10,54 @@ This is a Python implementation of the Bitcask storage engine, which provides an
 - Data persistence
 - Support for complex data types (via JSON serialization)
 - Tombstone-based deletion
+
+## Quick Start
+
+Run the complete setup with a single command:
+
+```bash
+./project-guardian.sh
+```
+
+This will:
+1. Install uv (the fast Python package installer)
+2. Create and activate a virtual environment
+3. Install all dependencies
+4. Set up pre-commit hooks
+5. Run the test suite
+
+## Installation
+
+1. Install uv:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/agaonker/pybitcask.git
+   cd pybitcask
+   ```
+
+3. Create and activate a virtual environment:
+   ```bash
+   uv venv .venv
+   source .venv/bin/activate  # On Unix/macOS
+   ```
+
+4. Install dependencies:
+   ```bash
+   # Install core dependencies
+   uv pip install -e .
+
+   # Install development dependencies
+   uv pip install -e ".[dev]"
+   ```
+
+5. Run tests:
+   ```bash
+   pytest tests/ -v
+   ```
 
 ## Use Cases
 
@@ -35,7 +83,7 @@ This is a Python implementation of the Bitcask storage engine, which provides an
    - Audit trails
    - System state snapshots
 
-### Example: IoT Data Collection System
+## Example Usage
 
 ```python
 from pybitcask import Bitcask
@@ -71,7 +119,6 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
 ### Vertical Scaling
 
 1. **Memory Management**
-   - The in-memory index grows with the number of unique keys
    - Monitor memory usage and implement key expiration if needed
    - Consider implementing a memory limit with LRU eviction
 
@@ -92,19 +139,7 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
    - Use quorum-based writes for consistency
    - Consider eventual consistency for better performance
 
-### Performance Optimization
-
-1. **Batch Operations**
-   - Use batch writes for better throughput
-   - Implement bulk reads for range queries
-   - Consider asynchronous operations for non-critical data
-
-2. **Compression**
-   - Implement value compression for large data
-   - Use efficient serialization formats
-   - Consider columnar storage for analytics
-
-## Limitations and Considerations
+## Limitations
 
 1. **Memory Usage**
    - The entire key space must fit in memory
@@ -125,11 +160,6 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
    - Single-writer, multiple-reader model
    - Consider sharding for write scaling
    - Implement proper locking strategies
-
-5. **Data Types**
-   - Limited to JSON-serializable data
-   - No native support for binary data
-   - Consider implementing custom serialization
 
 ## Future Improvements
 
@@ -153,324 +183,3 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
    - Add metrics collection
    - Implement health checks
    - Add performance monitoring
-
-## Installation
-
-### Using uv (Recommended)
-
-[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver, written in Rust. It offers several advantages:
-
-- Up to 10-100x faster than pip
-- Deterministic builds with lockfiles
-- Built-in virtual environment management
-- Secure by default with hash verification
-- Compatible with pip and existing Python tooling
-
-1. Install uv:
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/agaonker/pybitcask.git
-   cd pybitcask
-   ```
-
-3. Create and activate a virtual environment:
-   ```bash
-   uv venv .venv
-   source .venv/bin/activate  # On Unix/macOS
-   ```
-
-4. Install dependencies:
-   ```bash
-   # Install core dependencies
-   uv pip install -e .
-
-   # Install test dependencies
-   uv pip install pytest
-
-   # Install all development dependencies
-   uv pip install -e ".[dev]"
-   ```
-
-   For reproducible builds, you can use the lockfiles:
-   ```bash
-   # Install core dependencies
-   uv pip sync requirements.lock
-
-   # Install development dependencies
-   uv pip sync requirements-dev.lock
-   ```
-
-5. Run tests:
-   ```bash
-   pytest tests/ -v
-   ```
-
-### Using pip (Alternative)
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/agaonker/pybitcask.git
-   cd pybitcask
-   ```
-
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Unix/macOS
-   # or
-   .venv\Scripts\activate  # On Windows
-   ```
-
-3. Install dependencies:
-   ```bash
-   # Install core dependencies (none required)
-   pip install .
-
-   # Install test dependencies
-   pip install -e ".[test]"
-
-   # Install benchmark dependencies
-   pip install -e ".[benchmark]"
-   ```
-
-## Development
-
-### Running Tests
-
-To run the test suite:
-
-```bash
-# Using pytest
-pytest tests/
-
-# With coverage report
-pytest --cov=pybitcask tests/
-```
-
-### Running Benchmarks
-
-To run the benchmarks:
-
-```bash
-# Run benchmarks
-python benchmarks/benchmark.py
-
-# Generate visualizations
-python benchmarks/visualize.py
-```
-
-## Usage
-
-### Basic Operations
-
-```python
-from bitcask import Bitcask
-
-# Initialize the database
-db = Bitcask("data_directory")
-
-# Store data
-db.put("key1", "value1")
-db.put("key2", {"name": "test", "values": [1, 2, 3]})
-
-# Retrieve data
-value = db.get("key1")
-print(value)  # Output: "value1"
-
-# Delete data
-db.delete("key1")
-
-# Close the database
-db.close()
-```
-
-### Running Tests
-
-To run the test suite:
-
-```bash
-python -m unittest bitcask/tests/test_bitcask.py
-```
-
-## Implementation Details
-
-### Data Structure
-
-The implementation uses the following data structure for each record:
-
-```
-+----------------+----------------+----------------+----------------+----------------+
-| key_size (4B)  | value_size (4B)| timestamp (8B) | key (var)      | value (var)    |
-+----------------+----------------+----------------+----------------+----------------+
-```
-
-### Key Features
-
-1. **Append-Only Log**: All writes are appended to the end of the current data file
-2. **In-Memory Index**: Fast lookups using an in-memory hash map
-3. **Thread Safety**: Operations are protected by locks
-4. **Data Persistence**: Data is written to disk and can be recovered after restart
-5. **Tombstone Records**: Deleted keys are marked with tombstone records
-
-## Performance Benchmarks
-
-The implementation has been benchmarked with different data sizes and value sizes to measure its performance characteristics.
-
-### Benchmark Configuration
-- Data sizes: 1,000, 10,000, and 100,000 entries
-- Value sizes: 100, 1,000, and 10,000 bytes
-- Operations tested: Sequential Write, Sequential Read, Random Read, Batch Write, and Delete
-
-### Results
-
-Times are in microseconds (μs):
-
-|                 |   batch_write_time |   delete_time |   random_read_time |   read_time |   write_time |
-|:----------------|-------------------:|--------------:|-------------------:|------------:|-------------:|
-| (1000, 100)     |               3.77 |          3.13 |              14.6  |       14.26 |         4.1  |
-| (1000, 1000)    |               6.44 |          3.09 |              16.71 |       15.76 |         6.74 |
-| (1000, 10000)   |              27.58 |          3.06 |              27.39 |       26.59 |        27.4  |
-| (10000, 100)    |               4    |          2.87 |              14.31 |       14.32 |         3.98 |
-| (10000, 1000)   |               6.56 |          3.1  |              15.84 |       15.78 |         6.62 |
-| (10000, 10000)  |              28.35 |          2.78 |              27.83 |       26.65 |        27.47 |
-| (100000, 100)   |               3.66 |          3.12 |              15.76 |       14.57 |         3.73 |
-| (100000, 1000)  |               7.21 |          3.05 |              16.83 |       16.06 |         6.49 |
-| (100000, 10000) |              27.54 |          3.16 |              27.68 |       26.93 |        29.41 |
-
-### Key Observations
-
-1. **Write Performance**:
-   - Sequential writes are very fast, typically 3-7μs for small values
-   - Performance scales well with increasing data size
-   - Larger value sizes (10KB) increase write time to ~27-29μs
-
-2. **Read Performance**:
-   - Both sequential and random reads show consistent performance
-   - Read times are around 14-16μs for small values
-   - Larger values (10KB) increase read time to ~27μs
-
-3. **Delete Performance**:
-   - Delete operations are extremely fast and consistent
-   - Average delete time is ~3μs regardless of data or value size
-
-4. **Batch Write Performance**:
-   - Similar to sequential write performance
-   - Shows good efficiency for bulk operations
-
-### Performance Characteristics
-
-- **Scalability**: Performance remains stable as data size increases from 1K to 100K entries
-- **Value Size Impact**: Operations with 10KB values take about 4-5x longer than with 100B values
-- **Consistency**: Very consistent performance across operations, especially for deletes
-- **Memory Efficiency**: In-memory index enables fast lookups without significant performance degradation
-
-The benchmark results demonstrate that this implementation provides:
-- Predictable performance characteristics
-- Good scalability with data size
-- Efficient operations for both small and large values
-- Consistent delete performance
-- Fast batch operations
-
-## Comparison with Similar Databases
-
-| Database | Design | Strengths | Weaknesses | Best For | Website |
-|----------|--------|-----------|------------|----------|---------|
-| **pybitcask** | Append-only log + in-memory index | - Extremely fast writes (3-7μs) <br> - Simple implementation <br> - Crash-safe <br> - Minimal dependencies | - No built-in compaction <br> - Single-writer model <br> - Memory grows with keys | - High-write throughput apps <br> - Simple key-value needs <br> - Resource-constrained envs | [GitHub](https://github.com/agaonker/pybitcask) |
-| **Riak Bitcask** | Append-only log + in-memory index | - Production proven <br> - Built-in compaction <br> - Handles billions of keys <br> - Distributed support | - More complex <br> - Erlang dependency | - Distributed systems <br> - High availability needs | [Docs](https://docs.riak.com/riak/kv/latest/setup/planning/backend/bitcask/) |
-| **LevelDB** | LSM tree | - Good read/write balance <br> - Compression support <br> - Large dataset handling | - Complex implementation <br> - Write amplification | - General purpose <br> - Large datasets | [GitHub](https://github.com/google/leveldb) |
-| **BoltDB** | B+tree | - ACID compliant <br> - Very fast reads <br> - Simple API | - Slower writes <br> - Single writer | - Read-heavy workloads <br> - Embedded systems | [GitHub](https://github.com/boltdb/bolt) |
-| **LMDB** | Memory-mapped B+tree | - Extremely fast reads <br> - Zero-copy access <br> - ACID compliant | - Limited concurrency <br> - Memory mapped | - Embedded systems <br> - Fast read access | [Website](https://symas.com/lmdb/) |
-
-### Where pybitcask Shines
-
-pybitcask is particularly compelling in these specific scenarios:
-
-1. **Python-Centric Environments**
-   - Pure Python implementation
-   - No external dependencies
-   - Easy to integrate with Python applications
-   - Perfect for Python-based microservices
-
-2. **Resource-Constrained Applications**
-   ```python
-   # Example: Edge computing device with limited resources
-   from pybitcask import Bitcask
-   import psutil
-
-   class ResourceAwareStore:
-       def __init__(self, data_dir, memory_limit_mb=100):
-           self.db = Bitcask(data_dir)
-           self.memory_limit = memory_limit_mb * 1024 * 1024
-
-       def check_memory(self):
-           if psutil.Process().memory_info().rss > self.memory_limit:
-               # Implement memory management strategy
-               self.cleanup_old_data()
-
-       def put(self, key, value):
-           self.check_memory()
-           self.db.put(key, value)
-   ```
-
-3. **High-Write Throughput with Simple Needs**
-   ```python
-   # Example: Log aggregation system
-   class LogAggregator:
-       def __init__(self, data_dir):
-           self.db = Bitcask(data_dir)
-
-       def ingest_log(self, log_entry):
-           # Fast writes for log entries
-           timestamp = int(time.time() * 1000)  # millisecond precision
-           key = f"log:{timestamp}"
-           self.db.put(key, json.dumps(log_entry))
-
-       def query_logs(self, start_time, end_time):
-           # Simple time-range query
-           results = []
-           for key in self.db.keys():
-               if key.startswith("log:"):
-                   ts = int(key.split(":")[1])
-                   if start_time <= ts <= end_time:
-                       results.append(json.loads(self.db.get(key)))
-           return results
-   ```
-
-4. **Educational and Prototyping**
-   - Clean, readable implementation
-   - Easy to understand and modify
-   - Good for learning about storage engines
-   - Quick to prototype with
-
-### Performance Comparison
-
-| Operation | pybitcask | LevelDB | BoltDB | LMDB |
-|-----------|-----------|---------|--------|------|
-| Write (small) | 3-7μs | 10-15μs | 50-100μs | 20-30μs |
-| Read (small) | 14-16μs | 5-10μs | 1-2μs | <1μs |
-| Write (10KB) | 27-29μs | 30-40μs | 100-200μs | 40-50μs |
-| Read (10KB) | 26-27μs | 10-15μs | 2-3μs | 1-2μs |
-| Concurrent Reads | Good | Excellent | Excellent | Limited |
-| Concurrent Writes | Single writer | Good | Single writer | Limited |
-
-*Note: Performance numbers are approximate and can vary based on hardware and workload.*
-
-### When to Choose pybitcask
-
-Choose pybitcask when you need:
-1. Simple, reliable key-value storage
-2. High write throughput
-3. Python-native solution
-4. Minimal resource usage
-5. Easy to understand and modify
-
-Avoid pybitcask when you need:
-1. Complex queries
-2. Distributed systems
-3. High concurrency writes
-4. Built-in compaction
-5. Advanced features like transactions
