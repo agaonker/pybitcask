@@ -108,7 +108,12 @@ class Bitcask:
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
 
             # Write record: header (key_size, value_size, timestamp) + key + value
-            record = struct.pack(">IIQ", len(key_bytes), len(value_bytes), timestamp)
+            record = struct.pack(
+                ">IIQ",
+                len(key_bytes),
+                len(value_bytes),
+                timestamp,
+            )
             record += key_bytes + value_bytes
 
             # Write to active file
@@ -150,6 +155,45 @@ class Bitcask:
                 self.active_file.flush()
 
                 del self.index[key]
+
+    def batch_write(self, data: Dict[str, Any]) -> None:
+        """
+        Write multiple key-value pairs in a single operation.
+
+        Args:
+        ----
+            data: Dictionary of key-value pairs to write.
+
+        """
+        with self._lock:
+            timestamp = int(time.time() * 1000)  # Current time in milliseconds
+            for key, value in data.items():
+                # Serialize value to JSON
+                value_bytes = json.dumps(value).encode("utf-8")
+                key_bytes = key.encode("utf-8")
+
+                # Write record: header (key_size, value_size, timestamp) + key + value
+                record = struct.pack(
+                    ">IIQ",
+                    len(key_bytes),
+                    len(value_bytes),
+                    timestamp,
+                )
+                record += key_bytes + value_bytes
+
+                # Write to active file
+                self.active_file.write(record)
+
+                # Update index
+                self.index[key] = (
+                    self.active_file_id,
+                    len(value_bytes),
+                    self.active_file.tell() - len(value_bytes),
+                    timestamp,
+                )
+
+            # Flush all writes at once
+            self.active_file.flush()
 
     def close(self):
         """Close the database."""

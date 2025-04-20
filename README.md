@@ -158,7 +158,13 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
 
 ### Using uv (Recommended)
 
-[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver, written in Rust.
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver, written in Rust. It offers several advantages:
+
+- Up to 10-100x faster than pip
+- Deterministic builds with lockfiles
+- Built-in virtual environment management
+- Secure by default with hash verification
+- Compatible with pip and existing Python tooling
 
 1. Install uv:
    ```bash
@@ -181,14 +187,28 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
 
 4. Install dependencies:
    ```bash
-   # Install core dependencies (none required)
-   uv pip install .
+   # Install core dependencies
+   uv pip install -e .
 
    # Install test dependencies
-   uv pip install -e ".[test]"
+   uv pip install pytest
 
-   # Install benchmark dependencies
-   uv pip install -e ".[benchmark]"
+   # Install all development dependencies
+   uv pip install -e ".[dev]"
+   ```
+
+   For reproducible builds, you can use the lockfiles:
+   ```bash
+   # Install core dependencies
+   uv pip sync requirements.lock
+
+   # Install development dependencies
+   uv pip sync requirements-dev.lock
+   ```
+
+5. Run tests:
+   ```bash
+   pytest tests/ -v
    ```
 
 ### Using pip (Alternative)
