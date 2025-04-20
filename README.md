@@ -181,8 +181,6 @@ history = store.get_device_history("sensor1", 0, int(time.time()))
    ```bash
    uv venv .venv
    source .venv/bin/activate  # On Unix/macOS
-   # or
-   .venv\Scripts\activate  # On Windows
    ```
 
 4. Install dependencies:
