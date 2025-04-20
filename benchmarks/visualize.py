@@ -1,194 +1,218 @@
-import json
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-import platform
-import psutil
-import os
+"""Visualization module for Bitcask benchmark results."""
 
-def get_system_info():
+# -*- coding: utf-8 -*-
+import json
+import os
+import platform
+from typing import Any, Dict, List
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import psutil
+import seaborn as sns
+
+
+def get_system_info() -> Dict[str, str]:
+    """
+    Get system configuration information.
+
+    Returns
+    -------
+        Dictionary containing system information
+
+    """
     return {
-        'os': platform.system(),
-        'os_version': platform.version(),
-        'processor': platform.processor(),
-        'python_version': platform.python_version(),
-        'memory': f"{psutil.virtual_memory().total / (1024**3):.2f} GB",
-        'cpu_cores': psutil.cpu_count(logical=False),
-        'cpu_threads': psutil.cpu_count(logical=True)
+        "OS": platform.system() + " " + platform.release(),
+        "Python": platform.python_version(),
+        "Processor": platform.processor(),
+        "Memory": f"{psutil.virtual_memory().total / (1024**3):.1f} GB",
+        "CPU Cores": str(psutil.cpu_count(logical=False)),
+        "CPU Threads": str(psutil.cpu_count(logical=True)),
     }
 
-def load_results():
-    with open('benchmarks/results/benchmark_results.json', 'r') as f:
+
+def load_results() -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Load benchmark results from file.
+
+    Returns
+    -------
+        Dictionary containing benchmark results
+
+    """
+    with open("benchmarks/results/results.json") as f:
         return json.load(f)
 
-def create_dataframe(results):
-    rows = []
-    for config, data in results.items():
-        metrics = data['metrics']
-        row = {
-            'data_size': data['data_size'],
-            'value_size': data['value_size'],
-            'write_time': metrics['write_times_avg'],
-            'read_time': metrics['sequential_read_times_avg'],
-            'random_read_time': metrics['random_read_times_avg'],
-            'batch_write_time': metrics['batch_write_times_avg'],
-            'delete_time': metrics['delete_times_avg'],
-            'write_std': metrics['write_times_std'],
-            'read_std': metrics['sequential_read_times_std'],
-            'random_read_std': metrics['random_read_times_std'],
-            'batch_write_std': metrics['batch_write_times_std'],
-            'delete_std': metrics['delete_times_std']
-        }
-        rows.append(row)
-    return pd.DataFrame(rows)
 
-def plot_operation_times(df, operation, title):
-    plt.figure(figsize=(12, 8))
-    sns.set_style("whitegrid")
-    
-    for value_size in df['value_size'].unique():
-        data = df[df['value_size'] == value_size]
-        std_col = f"{operation.split('_')[0]}_std"
-        if std_col in data.columns:
-            plt.errorbar(data['data_size'], data[operation] * 1e6, 
-                        yerr=data[std_col] * 1e6,
-                        marker='o', label=f'Value Size: {value_size} bytes',
-                        capsize=5)
-        else:
-            plt.plot(data['data_size'], data[operation] * 1e6, 
-                    marker='o', label=f'Value Size: {value_size} bytes')
-    
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.xlabel('Data Size (number of entries)')
-    plt.ylabel('Time (microseconds)')
-    plt.title(title)
-    plt.grid(True, which="both", ls="-", alpha=0.2)
+def create_dataframe(results: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
+    """
+    Create a DataFrame from benchmark results.
+
+    Args:
+    ----
+        results: Dictionary containing benchmark results
+
+    Returns:
+    -------
+        DataFrame with processed benchmark data
+
+    """
+    data = []
+    for operation, measurements in results.items():
+        for measurement in measurements:
+            data.append(
+                {
+                    "operation": operation,
+                    "data_size": measurement["data_size"],
+                    "value_size": measurement["value_size"],
+                    "time": measurement["time"],
+                }
+            )
+    return pd.DataFrame(data)
+
+
+def plot_operation_times(df: pd.DataFrame, operation: str, output_dir: str):
+    """
+    Plot operation times for different data sizes.
+
+    Args:
+    ----
+        df: DataFrame containing benchmark data
+        operation: Operation type to plot
+        output_dir: Directory to save the plot
+
+    """
+    operation_data = df[df["operation"] == operation]
+    plt.figure(figsize=(10, 6))
+
+    for value_size in operation_data["value_size"].unique():
+        data = operation_data[operation_data["value_size"] == value_size]
+        plt.plot(
+            data["data_size"],
+            data["time"],
+            marker="o",
+            label=f"Value size: {value_size} bytes",
+        )
+
+    plt.xlabel("Data Size (number of key-value pairs)")
+    plt.ylabel("Time per Operation (seconds)")
+    plt.title(f"{operation.replace('_', ' ').title()} Time vs Data Size")
     plt.legend()
-    return plt.gcf()
+    plt.grid(True)
+    plt.savefig(os.path.join(output_dir, f"{operation}_time.png"))
+    plt.close()
 
-def plot_operation_comparison(df):
-    plt.figure(figsize=(15, 8))
-    sns.set_style("whitegrid")
-    
-    # Prepare data for comparison
-    operations = ['write_time', 'read_time', 'random_read_time', 'batch_write_time', 'delete_time']
-    data = []
-    for op in operations:
-        for _, row in df.iterrows():
-            data.append({
-                'Operation': op.replace('_', ' ').title(),
-                'Time (μs)': row[op] * 1e6,
-                'Value Size': f"{row['value_size']}B",
-                'Data Size': row['data_size']
-            })
-    
-    comparison_df = pd.DataFrame(data)
-    
-    # Create box plot
-    sns.boxplot(x='Operation', y='Time (μs)', data=comparison_df)
-    plt.title('Operation Performance Comparison')
+
+def plot_operation_comparison(df: pd.DataFrame, output_dir: str):
+    """
+    Plot comparison of different operations.
+
+    Args:
+    ----
+        df: DataFrame containing benchmark data
+        output_dir: Directory to save the plot
+
+    """
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(data=df, x="operation", y="time")
+    plt.xlabel("Operation")
+    plt.ylabel("Time per Operation (seconds)")
+    plt.title("Operation Time Comparison")
     plt.xticks(rotation=45)
     plt.tight_layout()
-    return plt.gcf()
+    plt.savefig(os.path.join(output_dir, "operation_comparison.png"))
+    plt.close()
 
-def plot_value_size_impact(df):
-    plt.figure(figsize=(15, 8))
-    sns.set_style("whitegrid")
-    
-    operations = ['write_time', 'read_time', 'random_read_time', 'batch_write_time', 'delete_time']
-    data = []
-    for op in operations:
-        for _, row in df.iterrows():
-            data.append({
-                'Operation': op.replace('_', ' ').title(),
-                'Time (μs)': row[op] * 1e6,
-                'Value Size': f"{row['value_size']}B"
-            })
-    
-    impact_df = pd.DataFrame(data)
-    
-    # Create violin plot
-    sns.violinplot(x='Operation', y='Time (μs)', hue='Value Size', data=impact_df)
-    plt.title('Impact of Value Size on Operation Performance')
-    plt.xticks(rotation=45)
+
+def plot_value_size_impact(df: pd.DataFrame, output_dir: str):
+    """
+    Plot impact of value size on operation time.
+
+    Args:
+    ----
+        df: DataFrame containing benchmark data
+        output_dir: Directory to save the plot
+
+    """
+    plt.figure(figsize=(12, 6))
+    sns.violinplot(data=df, x="value_size", y="time", hue="operation")
+    plt.xlabel("Value Size (bytes)")
+    plt.ylabel("Time per Operation (seconds)")
+    plt.title("Impact of Value Size on Operation Time")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
-    return plt.gcf()
+    plt.savefig(os.path.join(output_dir, "value_size_impact.png"))
+    plt.close()
 
-def generate_plots(df):
-    operations = {
-        'write_time': 'Sequential Write Performance',
-        'read_time': 'Sequential Read Performance',
-        'random_read_time': 'Random Read Performance',
-        'batch_write_time': 'Batch Write Performance',
-        'delete_time': 'Delete Performance'
-    }
-    
-    plots = {}
-    for op, title in operations.items():
-        fig = plot_operation_times(df, op, title)
-        plots[op] = fig
-    
-    # Add comparison plots
-    plots['operation_comparison'] = plot_operation_comparison(df)
-    plots['value_size_impact'] = plot_value_size_impact(df)
-    
-    return plots
 
-def generate_markdown_table(df):
-    # Create a pivot table for better visualization
-    table = pd.pivot_table(
-        df,
-        values=['write_time', 'read_time', 'random_read_time', 'batch_write_time', 'delete_time'],
-        index=['data_size', 'value_size'],
-        aggfunc='mean'
-    )
-    
-    # Format the times to be more readable (microseconds)
-    for col in table.columns:
-        table[col] = table[col].apply(lambda x: f"{x*1e6:.2f}")
-    
-    # Convert to markdown
-    return table.to_markdown()
+def generate_plots(results: Dict[str, List[Dict[str, Any]]], output_dir: str):
+    """
+    Generate all benchmark plots.
 
-def generate_benchmark_report(system_info, df):
-    report = "# Benchmark Report\n\n"
-    report += "## System Configuration\n\n"
-    report += "| Parameter | Value |\n"
-    report += "|-----------|-------|\n"
-    for key, value in system_info.items():
-        report += f"| {key.replace('_', ' ').title()} | {value} |\n"
-    
-    report += "\n## Benchmark Results\n\n"
-    report += "Times are in microseconds (μs)\n\n"
-    report += generate_markdown_table(df)
-    
-    return report
+    Args:
+    ----
+        results: Dictionary containing benchmark results
+        output_dir: Directory to save the plots
 
-def main():
-    # Get system information
-    system_info = get_system_info()
-    
-    # Load results
-    results = load_results()
-    
-    # Create DataFrame
+    """
+    os.makedirs(output_dir, exist_ok=True)
     df = create_dataframe(results)
-    
-    # Generate plots
-    plots = generate_plots(df)
-    
-    # Save plots
-    Path('benchmarks/plots').mkdir(parents=True, exist_ok=True)
-    for name, fig in plots.items():
-        fig.savefig(f'benchmarks/plots/{name}.png', dpi=300, bbox_inches='tight')
-        plt.close(fig)
-    
-    # Generate and save report
-    report = generate_benchmark_report(system_info, df)
-    with open('benchmarks/results/benchmark_report.md', 'w') as f:
-        f.write(report)
+
+    for operation in results.keys():
+        plot_operation_times(df, operation, output_dir)
+
+    plot_operation_comparison(df, output_dir)
+    plot_value_size_impact(df, output_dir)
+
+
+def generate_benchmark_report(
+    results: Dict[str, List[Dict[str, Any]]], output_dir: str
+):
+    """
+    Generate a markdown report of benchmark results.
+
+    Args:
+    ----
+        results: Dictionary containing benchmark results
+        output_dir: Directory to save the report
+
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    df = create_dataframe(results)
+
+    # Calculate summary statistics
+    summary = (
+        df.groupby(["operation", "value_size"])["time"]
+        .agg(["mean", "std", "min", "max"])
+        .round(6)
+    )
+
+    # Generate report
+    report = ["# Bitcask Benchmark Report\n"]
+
+    # Add system information
+    report.append("## System Configuration\n")
+    sys_info = get_system_info()
+    for key, value in sys_info.items():
+        report.append(f"- **{key}:** {value}")
+    report.append("\n")
+
+    # Add summary statistics
+    report.append("## Performance Summary\n")
+    report.append(summary.to_markdown())
+    report.append("\n")
+
+    # Write report
+    with open(os.path.join(output_dir, "benchmark_report.md"), "w") as f:
+        f.write("\n".join(report))
+
 
 if __name__ == "__main__":
-    main() 
+    # Load results
+    results = load_results()
+
+    # Generate plots
+    generate_plots(results, "benchmarks/plots")
+
+    # Generate and save report
+    generate_benchmark_report(results, "benchmarks/results")

@@ -45,12 +45,12 @@ import json
 class IoTDataStore:
     def __init__(self, data_dir):
         self.db = Bitcask(data_dir)
-        
+
     def store_sensor_data(self, device_id, sensor_data):
         # Create a composite key with timestamp
         key = f"{device_id}:{int(time.time())}"
         self.db.put(key, json.dumps(sensor_data))
-        
+
     def get_device_history(self, device_id, start_time, end_time):
         results = []
         for key in self.db.keys():
@@ -325,7 +325,7 @@ Times are in microseconds (μs):
 
 ### Key Observations
 
-1. **Write Performance**: 
+1. **Write Performance**:
    - Sequential writes are very fast, typically 3-7μs for small values
    - Performance scales well with increasing data size
    - Larger value sizes (10KB) increase write time to ~27-29μs
@@ -355,7 +355,7 @@ The benchmark results demonstrate that this implementation provides:
 - Good scalability with data size
 - Efficient operations for both small and large values
 - Consistent delete performance
-- Fast batch operations 
+- Fast batch operations
 
 ## Comparison with Similar Databases
 
@@ -382,17 +382,17 @@ pybitcask is particularly compelling in these specific scenarios:
    # Example: Edge computing device with limited resources
    from pybitcask import Bitcask
    import psutil
-   
+
    class ResourceAwareStore:
        def __init__(self, data_dir, memory_limit_mb=100):
            self.db = Bitcask(data_dir)
            self.memory_limit = memory_limit_mb * 1024 * 1024
-           
+
        def check_memory(self):
            if psutil.Process().memory_info().rss > self.memory_limit:
                # Implement memory management strategy
                self.cleanup_old_data()
-               
+
        def put(self, key, value):
            self.check_memory()
            self.db.put(key, value)
@@ -404,13 +404,13 @@ pybitcask is particularly compelling in these specific scenarios:
    class LogAggregator:
        def __init__(self, data_dir):
            self.db = Bitcask(data_dir)
-           
+
        def ingest_log(self, log_entry):
            # Fast writes for log entries
            timestamp = int(time.time() * 1000)  # millisecond precision
            key = f"log:{timestamp}"
            self.db.put(key, json.dumps(log_entry))
-           
+
        def query_logs(self, start_time, end_time):
            # Simple time-range query
            results = []
@@ -455,4 +455,4 @@ Avoid pybitcask when you need:
 2. Distributed systems
 3. High concurrency writes
 4. Built-in compaction
-5. Advanced features like transactions 
+5. Advanced features like transactions

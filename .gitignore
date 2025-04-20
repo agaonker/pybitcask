@@ -43,11 +43,6 @@ htmlcov/
 data/
 test_data/
 
-# Benchmark results and plots
-benchmarks/results/
-benchmarks/plots/
-benchmarks/data/
-
 # OS
 .DS_Store
 Thumbs.db
