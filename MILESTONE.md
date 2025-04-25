@@ -14,7 +14,9 @@ The end vision is a system that can run a local multi-node cluster and later be 
 
 ## Future Evolution
 
-After completing the Python implementation and gathering production experience, we plan to pivot to a new language for the next generation implementation. This will be a new project that:
+After completing the Python implementation and gathering production experience, 
+we plan to pivot to a new language for the next generation implementation. 
+This will be a new project that:
 
 - Leverages the lessons learned from PyBitcask
 - Takes advantage of modern hardware capabilities
@@ -24,17 +26,17 @@ After completing the Python implementation and gathering production experience, 
 
 ### Target Languages
 
-<div align="center">
+<div style="margin-left: 2em;">
   <table>
     <tr>
-      <td align="center">
+      <td>
         <a href="https://golang.org">
-          <img src="https://raw.githubusercontent.com/golang/go/master/doc/gopher/fiveyears.jpg" width="100" alt="Go Logo">
+          <img src="https://go.dev/images/gophers/ladder.svg" width="100" alt="Go Logo">
           <br>
           <span style="color: #00ADD8; font-weight: bold;">Go</span>
         </a>
       </td>
-      <td align="center">
+      <td style="padding-left: 2em;">
         <a href="https://www.rust-lang.org">
           <img src="https://www.rust-lang.org/static/images/rust-social-wide.jpg" width="100" alt="Rust Logo">
           <br>
