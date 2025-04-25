@@ -16,11 +16,11 @@ The end vision is a system that can run a local multi-node cluster and later be 
 
 | Milestone | Steps | Status |
 |-----------|-------|--------|
-| **P0: Log Compaction & Format** | • Implement log compaction mechanism<br>• Add human-readable data format<br>• Create compaction scheduling<br>• Add compaction metrics | ⚪ Not Started |
-| **Phase 1: Core Features** | • Implement vector clocks for conflict resolution<br>• Add basic node-to-node communication<br>• Implement data replication between nodes<br>• Add cluster membership management | 🟡 In Progress |
-| **Phase 2: Distributed Features** | • Implement consistent hashing for data distribution<br>• Add quorum-based reads and writes<br>• Implement node failure detection and recovery<br>• Add anti-entropy mechanisms | ⚪ Not Started |
-| **Phase 3: Production Readiness** | • Add monitoring and metrics collection<br>• Implement backup and restore functionality<br>• Add security features (authentication, encryption)<br>• Create deployment guides for AWS | ⚪ Not Started |
-| **Phase 4: Advanced Features** | • Add support for secondary indexes<br>• Implement MapReduce functionality<br>• Add support for complex queries<br>• Implement data compression | ⚪ Not Started |
+| **P0: Log Compaction & Format** | • Implement log compaction mechanism<br>• Add human-readable data format<br>• Create compaction scheduling<br>• Add compaction metrics | 🟡 |
+| **Phase 1: Core Features** | • Implement vector clocks for conflict resolution<br>• Add basic node-to-node communication<br>• Implement data replication between nodes<br>• Add cluster membership management | ⚪ |
+| **Phase 2: Distributed Features** | • Implement consistent hashing for data distribution<br>• Add quorum-based reads and writes<br>• Implement node failure detection and recovery<br>• Add anti-entropy mechanisms | ⚪ |
+| **Phase 3: Production Readiness** | • Add monitoring and metrics collection<br>• Implement backup and restore functionality<br>• Add security features (authentication, encryption)<br>• Create deployment guides for AWS | ⚪ |
+| **Phase 4: Advanced Features** | • Add support for secondary indexes<br>• Implement MapReduce functionality<br>• Add support for complex queries<br>• Implement data compression | ⚪ |
 
 Status Legend:
 - ✅ Completed
