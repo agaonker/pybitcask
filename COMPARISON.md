@@ -4,7 +4,6 @@
 
 | Database | Design | Strengths | Weaknesses | Best For | Website |
 |----------|--------|-----------|------------|----------|---------|
-| **pybitcask** | Append-only log + in-memory index | - Extremely fast writes (3-7μs) <br> - Simple implementation <br> - Crash-safe <br> - Minimal dependencies | - No built-in compaction <br> - Single-writer model <br> - Memory grows with keys | - High-write throughput apps <br> - Simple key-value needs <br> - Resource-constrained envs | [GitHub](https://github.com/agaonker/pybitcask) |
 | **Riak Bitcask** | Append-only log + in-memory index | - Production proven <br> - Built-in compaction <br> - Handles billions of keys <br> - Distributed support | - More complex <br> - Erlang dependency | - Distributed systems <br> - High availability needs | [Docs](https://docs.riak.com/riak/kv/latest/setup/planning/backend/bitcask/) |
 | **LevelDB** | LSM tree | - Good read/write balance <br> - Compression support <br> - Large dataset handling | - Complex implementation <br> - Write amplification | - General purpose <br> - Large datasets | [GitHub](https://github.com/google/leveldb) |
 | **BoltDB** | B+tree | - ACID compliant <br> - Very fast reads <br> - Simple API | - Slower writes <br> - Single writer | - Read-heavy workloads <br> - Embedded systems | [GitHub](https://github.com/boltdb/bolt) |
@@ -12,18 +11,18 @@
 
 ## Performance Comparison
 
-| Operation | pybitcask | LevelDB | BoltDB | LMDB |
-|-----------|-----------|---------|--------|------|
-| Write (small) | 3-7μs | 10-15μs | 50-100μs | 20-30μs |
-| Read (small) | 14-16μs | 5-10μs | 1-2μs | <1μs |
-| Write (10KB) | 27-29μs | 30-40μs | 100-200μs | 40-50μs |
-| Read (10KB) | 26-27μs | 10-15μs | 2-3μs | 1-2μs |
-| Concurrent Reads | Good | Excellent | Excellent | Limited |
-| Concurrent Writes | Single writer | Good | Single writer | Limited |
+| Operation | LevelDB | BoltDB | LMDB |
+|-----------|---------|--------|------|
+| Write (small) | 10-15μs | 50-100μs | 20-30μs |
+| Read (small) | 5-10μs | 1-2μs | <1μs |
+| Write (10KB) | 30-40μs | 100-200μs | 40-50μs |
+| Read (10KB) | 10-15μs | 2-3μs | 1-2μs |
+| Concurrent Reads | Excellent | Excellent | Limited |
+| Concurrent Writes | Good | Single writer | Limited |
 
 *Note: Performance numbers are approximate and can vary based on hardware and workload.*
 
-## Where pybitcask Shines
+## Where pybitcask Aims to Be
 
 ### 1. Python-Centric Environments
 
@@ -89,9 +88,9 @@ class LogAggregator:
         return results
 ```
 
-## When to Choose pybitcask
+## When to Consider pybitcask
 
-### Choose pybitcask when you need:
+### Consider pybitcask when you need:
 1. Simple, reliable key-value storage
 2. High write throughput
 3. Python-native solution
