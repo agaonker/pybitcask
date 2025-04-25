@@ -14,8 +14,8 @@ The end vision is a system that can run a local multi-node cluster and later be 
 
 ## Future Evolution
 
-After completing the Python implementation and gathering production experience, 
-we plan to pivot to a new language for the next generation implementation. 
+After completing the Python implementation and gathering production experience,
+we plan to pivot to a new language for the next generation implementation.
 This will be a new project that:
 
 - Leverages the lessons learned from PyBitcask
@@ -31,7 +31,7 @@ This will be a new project that:
     <tr>
       <td>
         <a href="https://golang.org">
-          <img src="https://go.dev/images/gophers/ladder.svg" width="100" alt="Go Logo">
+          <img src="https://go.dev/images/gophers/blue.svg" width="100" alt="Go Logo">
           <br>
           <span style="color: #00ADD8; font-weight: bold;">Go</span>
         </a>
