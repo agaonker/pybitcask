@@ -33,6 +33,22 @@ class DataFormat(ABC):
         """Encode a tombstone record into bytes."""
         pass
 
+    @abstractmethod
+    def read_record(self, file) -> Tuple[str, Any, int, int]:
+        """
+        Read a record from a file.
+
+        Args:
+        ----
+            file: The file object to read from
+
+        Returns:
+        -------
+            Tuple of (key, value, timestamp, record_size)
+
+        """
+        pass
+
 
 class BinaryFormat(DataFormat):
     """Binary format implementation."""
@@ -71,6 +87,22 @@ class BinaryFormat(DataFormat):
         header = struct.pack(">IIQ", len(key_bytes), 0, timestamp)
         return header + key_bytes
 
+    def read_record(self, file) -> Tuple[str, Any, int, int]:
+        """Read a record from a file in binary format."""
+        header = file.read(16)
+        if not header or len(header) < 16:
+            return None, None, None, None
+
+        try:
+            key_size, value_size, timestamp = struct.unpack(">IIQ", header)
+            key = file.read(key_size).decode("utf-8")
+            value_bytes = file.read(value_size)
+            value = json.loads(value_bytes.decode("utf-8"))
+            total_size = 16 + key_size + value_size
+            return key, value, timestamp, total_size
+        except Exception as e:
+            raise ValueError(f"Failed to read binary record: {str(e)}") from e
+
 
 class JsonFormat(DataFormat):
     """JSON format implementation for human-readable storage."""
@@ -96,6 +128,22 @@ class JsonFormat(DataFormat):
         """Encode a tombstone in JSON format."""
         record = {"key": key, "value": None, "timestamp": timestamp, "deleted": True}
         return (json.dumps(record) + "\n").encode("utf-8")
+
+    def read_record(self, file) -> Tuple[str, Any, int, int]:
+        """Read a record from a file in JSON format."""
+        line = file.readline()
+        if not line:
+            return None, None, None, None
+
+        try:
+            record = json.loads(line.decode("utf-8").strip())
+            key = record["key"]
+            value = record["value"]
+            timestamp = record["timestamp"]
+            record_size = len(line)
+            return key, value, timestamp, record_size
+        except Exception as e:
+            raise ValueError(f"Failed to read JSON record: {str(e)}") from e
 
 
 def get_format_by_identifier(identifier: bytes) -> DataFormat:

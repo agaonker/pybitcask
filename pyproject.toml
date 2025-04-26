@@ -60,6 +60,14 @@ ignore = [
     "D203",  # one-blank-line-before-class
     "D212",  # multi-line-summary-first-line
 ]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
@@ -69,9 +77,6 @@ exclude = [
     "build",
     "dist",
 ]
-
-# Allow unused variables when underscore-prefixed.
-dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 known-first-party = ["pybitcask"]

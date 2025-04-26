@@ -14,7 +14,7 @@ from pathlib import Path
 
 import click
 
-from src.pybitcask.bitcask import Bitcask
+from pybitcask.bitcask import Bitcask
 
 # Add the project root to Python path
 project_root = dirname(dirname(dirname(dirname(abspath(__file__)))))
