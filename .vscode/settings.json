@@ -4,5 +4,6 @@
     "editor.codeActionsOnSave": {
         "source.fixAll.ruff": true
     },
-    "ruff.format.enable": true
+    "ruff.format.enable": true,
+    "ruff.lint.enable": true
 }
