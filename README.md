@@ -77,12 +77,6 @@ This will:
    - Feature flag storage
    - Cache persistence
 
-3. **Data Recovery Scenarios**
-   - Crash recovery systems
-   - Transaction logs
-   - Audit trails
-   - System state snapshots
-
 ## Example Usage
 
 ```python
