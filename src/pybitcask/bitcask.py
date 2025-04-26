@@ -98,24 +98,39 @@ class Bitcask:
 
     def _detect_format(self, data_file: Path) -> DataFormat:
         """Detect the format of a data file."""
-        with open(data_file, "rb") as f:
-            # Read format identifier (first byte)
-            identifier = f.read(self.FORMAT_ID_SIZE)
-            if not identifier:
-                # Empty file, use current format
-                logger.debug(
-                    "Empty file %s, using current format: %s",
-                    data_file,
-                    self.format.__class__.__name__,
-                )
-                return self.format
-            format = get_format_by_identifier(identifier)
-            logger.debug(
-                "Detected format %s for file %s",
-                format.__class__.__name__,
-                data_file,
-            )
-            return format
+        try:
+            with open(data_file, "rb") as f:
+                # Read format identifier (first byte)
+                identifier = f.read(self.FORMAT_ID_SIZE)
+                if not identifier:
+                    # Empty file, use current format
+                    logger.debug(
+                        "Empty file %s, using current format: %s",
+                        data_file,
+                        self.format.__class__.__name__,
+                    )
+                    return self.format
+
+                # Try to detect format from identifier
+                try:
+                    format = get_format_by_identifier(identifier)
+                    logger.debug(
+                        "Detected format %s for file %s",
+                        format.__class__.__name__,
+                        data_file,
+                    )
+                    return format
+                except ValueError:
+                    # If format detection fails, use current format
+                    logger.warning(
+                        "Could not detect format for file %s, using current format: %s",
+                        data_file,
+                        self.format.__class__.__name__,
+                    )
+                    return self.format
+        except Exception as e:
+            logger.error("Error detecting format for file %s: %s", data_file, e)
+            return self.format
 
     def _build_index(self):
         """Build the in-memory index from existing data files."""
@@ -131,60 +146,66 @@ class Bitcask:
                 # Skip format identifier
                 f.seek(self.FORMAT_ID_SIZE)
                 while True:
-                    if isinstance(format, JsonFormat):
-                        # Read line by line for JSON format
-                        line = f.readline()
-                        if not line:
-                            break
-                        try:
-                            key, _, timestamp = format.decode_record(line)
-                            value_pos = f.tell() - len(line)
-                            value_size = len(line)
-                            self.index[key] = (
-                                int(data_file.stem),
-                                value_size,
-                                value_pos,
-                                timestamp,
-                            )
-                            logger.debug(
-                                "Indexed JSON record: key=%s, pos=%d, size=%d",
-                                key,
-                                value_pos,
-                                value_size,
-                            )
-                        except Exception as e:
-                            logger.warning("Failed to decode JSON record: %s", e)
-                            continue
-                    else:
-                        # Read binary format
-                        record_pos = f.tell()  # Get position before reading anything
-                        header = f.read(16)
-                        if not header or len(header) < 16:
-                            break
-                        try:
-                            key_size, value_size, timestamp = struct.unpack(
-                                ">IIQ", header
-                            )
-                            key = f.read(key_size).decode("utf-8")
-                            # Skip value
-                            f.seek(value_size, 1)
-                            # Total record size is header + key + value
-                            total_size = 16 + key_size + value_size
-                            self.index[key] = (
-                                int(data_file.stem),
-                                total_size,
-                                record_pos,
-                                timestamp,
-                            )
-                            logger.debug(
-                                "Indexed binary record: key=%s, pos=%d, size=%d",
-                                key,
-                                record_pos,
-                                total_size,
-                            )
-                        except Exception as e:
-                            logger.warning("Failed to decode binary record: %s", e)
-                            continue
+                    try:
+                        if isinstance(format, JsonFormat):
+                            # Read line by line for JSON format
+                            line = f.readline()
+                            if not line:
+                                break
+                            try:
+                                key, _, timestamp = format.decode_record(line)
+                                value_pos = f.tell() - len(line)
+                                value_size = len(line)
+                                self.index[key] = (
+                                    int(data_file.stem),
+                                    value_size,
+                                    value_pos,
+                                    timestamp,
+                                )
+                                logger.debug(
+                                    "Indexed JSON record: key=%s, pos=%d, size=%d",
+                                    key,
+                                    value_pos,
+                                    value_size,
+                                )
+                            except Exception as e:
+                                logger.warning("Failed to decode JSON record: %s", e)
+                                continue
+                        else:
+                            # Read binary format
+                            record_pos = (
+                                f.tell()
+                            )  # Get position before reading anything
+                            header = f.read(16)
+                            if not header or len(header) < 16:
+                                break
+                            try:
+                                key_size, value_size, timestamp = struct.unpack(
+                                    ">IIQ", header
+                                )
+                                key = f.read(key_size).decode("utf-8")
+                                # Skip value
+                                f.seek(value_size, 1)
+                                # Total record size is header + key + value
+                                total_size = 16 + key_size + value_size
+                                self.index[key] = (
+                                    int(data_file.stem),
+                                    total_size,
+                                    record_pos,
+                                    timestamp,
+                                )
+                                logger.debug(
+                                    "Indexed binary record: key=%s, pos=%d, size=%d",
+                                    key,
+                                    record_pos,
+                                    total_size,
+                                )
+                            except Exception as e:
+                                logger.warning("Failed to decode binary record: %s", e)
+                                continue
+                    except Exception as e:
+                        logger.error("Error processing file %s: %s", data_file, e)
+                        break
 
     def put(self, key: str, value: Any) -> None:
         """Store a key-value pair."""
@@ -252,6 +273,17 @@ class Bitcask:
                 logger.error("Failed to decode record: %s", e)
                 return None
 
+    def list_keys(self) -> list[str]:
+        """
+        List all keys in the database.
+
+        Returns
+        -------
+            A list of all keys in the database.
+
+        """
+        return list(self.index.keys())
+
     def delete(self, key: str) -> None:
         """Delete a key-value pair."""
         with self._lock:
@@ -305,3 +337,30 @@ class Bitcask:
             self.active_file.close()
             self.active_file = None
             logger.debug("Closed database")
+
+    def clear(self) -> None:
+        """
+        Delete all data and start fresh.
+
+        This will:
+        1. Close any open files
+        2. Delete all data files
+        3. Clear the in-memory index
+        4. Create a new empty database
+        """
+        # Close any open files
+        self.close()
+
+        # Delete all data files
+        for data_file in self.data_dir.glob("*.data"):
+            data_file.unlink()
+
+        # Clear the index
+        self.index.clear()
+
+        # Reset file counter
+        self.active_file_id = 0
+
+        # Create new empty database
+        self._create_new_data_file()
+        logger.debug("Database cleared and reset")

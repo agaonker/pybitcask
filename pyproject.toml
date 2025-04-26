@@ -6,9 +6,6 @@ authors = [
     { name = "Ashish Gaonker", email = "ashish.gec@gmail.com" }
 ]
 dependencies = [
-    "fastapi>=0.100.0",
-    "uvicorn>=0.23.0",
-    "requests>=2.31.0",
     "click>=8.1.0"
 ]
 requires-python = ">=3.8"
