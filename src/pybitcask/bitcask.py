@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Bitcask:
-    """
-    A log-structured hash table for fast key/value data storage.
+    """A log-structured hash table for fast key/value data storage.
 
     The Bitcask design provides high-performance operations by using a log-structured
     storage engine with an in-memory hash table of keys. This implementation follows
@@ -29,8 +28,7 @@ class Bitcask:
     FORMAT_ID_SIZE = 1
 
     def __init__(self, directory: str, debug_mode: bool = False):
-        """
-        Initialize a new Bitcask instance.
+        """Initialize a new Bitcask instance.
 
         Args:
         ----
@@ -240,8 +238,7 @@ class Bitcask:
             return value
 
     def list_keys(self) -> list[str]:
-        """
-        List all keys in the database.
+        """List all keys in the database.
 
         Returns
         -------
@@ -263,8 +260,7 @@ class Bitcask:
                 logger.debug("Deleted key: %s", key)
 
     def batch_write(self, data: Dict[str, Any]) -> None:
-        """
-        Write multiple key-value pairs in a single operation.
+        """Write multiple key-value pairs in a single operation.
 
         Args:
         ----
@@ -305,8 +301,7 @@ class Bitcask:
             logger.debug("Closed database")
 
     def clear(self) -> None:
-        """
-        Delete all data and start fresh.
+        """Delete all data and start fresh.
 
         This will:
         1. Close any open files

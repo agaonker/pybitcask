@@ -35,8 +35,7 @@ class BenchmarkBase:
             shutil.rmtree(self.data_dir)
 
     def generate_data(self, size: int, value_size: int) -> Dict[str, str]:
-        """
-        Generate test data for benchmarking.
+        """Generate test data for benchmarking.
 
         Args:
         ----
@@ -55,8 +54,7 @@ class PyBitcaskEngine:
     """Engine class for running Bitcask benchmarks."""
 
     def __init__(self, path: str):
-        """
-        Initialize the Bitcask engine.
+        """Initialize the Bitcask engine.
 
         Args:
         ----
@@ -77,8 +75,7 @@ class PyBitcaskEngine:
             self.db.close()
 
     def put(self, key: str, value: str):
-        """
-        Store a key-value pair.
+        """Store a key-value pair.
 
         Args:
         ----
@@ -89,8 +86,7 @@ class PyBitcaskEngine:
         self.db.put(key, value)
 
     def get(self, key: str) -> str:
-        """
-        Retrieve a value by key.
+        """Retrieve a value by key.
 
         Args:
         ----
@@ -104,8 +100,7 @@ class PyBitcaskEngine:
         return self.db.get(key)
 
     def delete(self, key: str):
-        """
-        Delete a key-value pair.
+        """Delete a key-value pair.
 
         Args:
         ----
@@ -141,8 +136,7 @@ class BitcaskBenchmark:
         self.db = None
 
     def generate_data(self, size: int, value_size: int) -> Dict[str, str]:
-        """
-        Generate test data for benchmarking.
+        """Generate test data for benchmarking.
 
         Args:
         ----
@@ -157,8 +151,7 @@ class BitcaskBenchmark:
         return {f"key{i}": "x" * value_size for i in range(size)}
 
     def run_write_benchmark(self, size: int, value_size: int) -> float:
-        """
-        Run write operation benchmark.
+        """Run write operation benchmark.
 
         Args:
         ----
@@ -182,8 +175,7 @@ class BitcaskBenchmark:
         return (end_time - start_time) / size
 
     def run_read_benchmark(self, size: int, value_size: int) -> float:
-        """
-        Run read operation benchmark.
+        """Run read operation benchmark.
 
         Args:
         ----
@@ -213,8 +205,7 @@ class BitcaskBenchmark:
 
 
 def generate_random_data(size: int, value_size: int = 100) -> List[Tuple[str, str]]:
-    """
-    Generate random key-value pairs for testing.
+    """Generate random key-value pairs for testing.
 
     Args:
     ----
@@ -239,8 +230,7 @@ def generate_random_data(size: int, value_size: int = 100) -> List[Tuple[str, st
 def run_benchmark(
     engine: PyBitcaskEngine, data: List[Tuple[str, str]], operations: int = 1000
 ) -> Dict[str, float]:
-    """
-    Run benchmark tests on pybitcask.
+    """Run benchmark tests on pybitcask.
 
     Args:
     ----
@@ -320,8 +310,7 @@ def run_benchmark(
 
 
 def run_benchmarks() -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Run all benchmarks and collect results.
+    """Run all benchmarks and collect results.
 
     Returns
     -------

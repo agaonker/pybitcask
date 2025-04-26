@@ -1,5 +1,4 @@
-"""
-Setup configuration for the Bitcask CLI package.
+"""Setup configuration for the Bitcask CLI package.
 
 This module defines the package metadata and dependencies for the Bitcask CLI.
 It uses setuptools to package the CLI application for distribution.

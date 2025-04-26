@@ -13,8 +13,7 @@ import seaborn as sns
 
 
 def get_system_info() -> Dict[str, str]:
-    """
-    Get system configuration information.
+    """Get system configuration information.
 
     Returns
     -------
@@ -32,8 +31,7 @@ def get_system_info() -> Dict[str, str]:
 
 
 def load_results() -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Load benchmark results from file.
+    """Load benchmark results from file.
 
     Returns
     -------
@@ -45,8 +43,7 @@ def load_results() -> Dict[str, List[Dict[str, Any]]]:
 
 
 def create_dataframe(results: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
-    """
-    Create a DataFrame from benchmark results.
+    """Create a DataFrame from benchmark results.
 
     Args:
     ----
@@ -72,8 +69,7 @@ def create_dataframe(results: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
 
 
 def plot_operation_times(df: pd.DataFrame, operation: str, output_dir: str):
-    """
-    Plot operation times for different data sizes.
+    """Plot operation times for different data sizes.
 
     Args:
     ----
@@ -104,8 +100,7 @@ def plot_operation_times(df: pd.DataFrame, operation: str, output_dir: str):
 
 
 def plot_operation_comparison(df: pd.DataFrame, output_dir: str):
-    """
-    Plot comparison of different operations.
+    """Plot comparison of different operations.
 
     Args:
     ----
@@ -125,8 +120,7 @@ def plot_operation_comparison(df: pd.DataFrame, output_dir: str):
 
 
 def plot_value_size_impact(df: pd.DataFrame, output_dir: str):
-    """
-    Plot impact of value size on operation time.
+    """Plot impact of value size on operation time.
 
     Args:
     ----
@@ -146,8 +140,7 @@ def plot_value_size_impact(df: pd.DataFrame, output_dir: str):
 
 
 def generate_plots(results: Dict[str, List[Dict[str, Any]]], output_dir: str):
-    """
-    Generate all benchmark plots.
+    """Generate all benchmark plots.
 
     Args:
     ----
@@ -168,8 +161,7 @@ def generate_plots(results: Dict[str, List[Dict[str, Any]]], output_dir: str):
 def generate_benchmark_report(
     results: Dict[str, List[Dict[str, Any]]], output_dir: str
 ):
-    """
-    Generate a markdown report of benchmark results.
+    """Generate a markdown report of benchmark results.
 
     Args:
     ----

@@ -35,8 +35,7 @@ class DataFormat(ABC):
 
     @abstractmethod
     def read_record(self, file) -> Tuple[str, Any, int, int]:
-        """
-        Read a record from a file.
+        """Read a record from a file.
 
         Args:
         ----

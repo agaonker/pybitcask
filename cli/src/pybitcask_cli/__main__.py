@@ -1,5 +1,4 @@
-"""
-Command-line interface for the Bitcask key-value store.
+"""Command-line interface for the Bitcask key-value store.
 
 This module provides a CLI for interacting with the Bitcask key-value store,
 including operations like put, get, delete, and mode switching.
@@ -22,16 +21,14 @@ sys.path.append(project_root)
 
 
 class BitcaskCLI:
-    """
-    Command-line interface for the Bitcask key-value store.
+    """Command-line interface for the Bitcask key-value store.
 
     This class provides methods for interacting with the Bitcask database
     through a command-line interface, including data operations and mode switching.
     """
 
     def __init__(self, data_dir: str = "./data", debug_mode: bool = False):
-        """
-        Initialize the Bitcask CLI.
+        """Initialize the Bitcask CLI.
 
         Args:
         ----
@@ -53,8 +50,7 @@ class BitcaskCLI:
             self._save_config()
 
     def _save_config(self) -> None:
-        """
-        Save the current configuration to file.
+        """Save the current configuration to file.
 
         This method writes the current debug mode setting to the config file.
         """
@@ -63,8 +59,7 @@ class BitcaskCLI:
             json.dump(config, f)
 
     def ensure_db(self) -> None:
-        """
-        Ensure the database connection is established.
+        """Ensure the database connection is established.
 
         If the database is not connected, this method creates a new connection
         and registers the cleanup handler.
@@ -172,8 +167,7 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def switch_mode(self, debug_mode: bool) -> None:
-        """
-        Switch between debug and normal modes.
+        """Switch between debug and normal modes.
 
         This will:
         1. Close and clear the database
