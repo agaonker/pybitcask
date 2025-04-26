@@ -1,11 +1,17 @@
 """Unit tests for the Bitcask key-value store implementation."""
 
 # -*- coding: utf-8 -*-
+import logging
 import shutil
 import unittest
 from pathlib import Path
 
 from pybitcask import Bitcask
+
+# Disable all logging before importing Bitcask
+logging.disable(logging.CRITICAL)
+
+logger = logging.getLogger(__name__)
 
 
 class TestBitcask(unittest.TestCase):
@@ -23,22 +29,44 @@ class TestBitcask(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def test_basic_operations(self):
-        """Test basic put and get operations."""
-        # Test put and get
-        self.db.put("key1", "value1")
-        self.assertEqual(self.db.get("key1"), "value1")
+        """Test basic Bitcask operations: put, get, delete."""
+        # Test data
+        test_data = {
+            "key1": "value1",
+            "key2": {"nested": "value2"},
+            "key3": 123,
+            "key4": [1, 2, 3],
+        }
 
-        # Test updating a value
-        self.db.put("key1", "new_value1")
-        self.assertEqual(self.db.get("key1"), "new_value1")
+        # Test put and get
+        for key, value in test_data.items():
+            self.db.put(key, value)
+            retrieved = self.db.get(key)
+            self.assertEqual(
+                retrieved, value, f"Retrieved value for {key} does not match original"
+            )
+            logger.debug("Successfully stored and retrieved %s: %s", key, value)
+
+        # Test delete
+        key_to_delete = "key2"
+        self.db.delete(key_to_delete)
+        deleted_value = self.db.get(key_to_delete)
+        self.assertIsNone(deleted_value, f"Deleted key {key_to_delete} still exists")
+        logger.debug("Successfully deleted %s", key_to_delete)
 
         # Test non-existent key
-        self.assertIsNone(self.db.get("nonexistent"))
+        non_existent = self.db.get("non_existent_key")
+        self.assertIsNone(non_existent, "Non-existent key should return None")
+        logger.debug("Successfully handled non-existent key")
 
-        # Test complex data types
-        complex_data = {"name": "test", "values": [1, 2, 3]}
-        self.db.put("complex", complex_data)
-        self.assertEqual(self.db.get("complex"), complex_data)
+        # Test overwrite
+        new_value = "new_value1"
+        self.db.put("key1", new_value)
+        retrieved = self.db.get("key1")
+        self.assertEqual(
+            retrieved, new_value, "Overwritten value does not match new value"
+        )
+        logger.debug("Successfully overwrote key1 with new value")
 
     def test_delete(self):
         """Test delete operation."""

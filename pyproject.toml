@@ -5,7 +5,12 @@ description = "A Python implementation of the Bitcask storage engine"
 authors = [
     { name = "Ashish Gaonker", email = "ashish.gec@gmail.com" }
 ]
-dependencies = []
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "requests>=2.31.0",
+    "click>=8.1.0"
+]
 requires-python = ">=3.8"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,9 +29,13 @@ benchmark = [
     "tabulate>=0.9.0",
 ]
 dev = [
-    "ruff>=0.3.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
     "black>=24.0.0",
     "isort>=5.13.0",
+    "mypy>=1.0.0",
+    "ruff>=0.3.0",
+    "coverage>=7.0.0"
 ]
 
 [tool.pytest.ini_options]
