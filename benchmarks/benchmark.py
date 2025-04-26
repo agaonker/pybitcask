@@ -2,7 +2,6 @@
 
 # -*- coding: utf-8 -*-
 import json
-import os
 import random
 import shutil
 import statistics
@@ -128,8 +127,18 @@ class BitcaskBenchmark:
 
     def setup(self):
         """Set up the benchmark environment."""
-        if os.path.exists(self.data_dir):
+        # Clean up any existing data
+        if self.data_dir.exists():
             shutil.rmtree(self.data_dir)
+        self.data_dir.mkdir(exist_ok=True)
+
+        # Initialize the database
+        self.db = Bitcask(str(self.data_dir))
+
+        # Write a test record to ensure format identifier is written
+        self.db.put("test", "test")
+        self.db.close()
+        self.db = None
 
     def generate_data(self, size: int, value_size: int) -> Dict[str, str]:
         """
@@ -355,11 +364,18 @@ def main():
     value_sizes = [100, 1000, 10000]  # Different value sizes in bytes
     operations = 1000
 
+    # Clean up old benchmark data
+    benchmark_data_dir = Path("benchmarks/data")
+    if benchmark_data_dir.exists():
+        shutil.rmtree(benchmark_data_dir)
+    benchmark_data_dir.mkdir(parents=True, exist_ok=True)
+
     all_results = {}
 
     for data_size in data_sizes:
         for value_size in value_sizes:
-            msg = f"\nRunning benchmark with data_size={data_size}, value_size={value_size}"
+            msg = f"\nRunning benchmark with data_size={data_size}, \
+            value_size={value_size}"
             print(msg)
 
             # Generate test data
