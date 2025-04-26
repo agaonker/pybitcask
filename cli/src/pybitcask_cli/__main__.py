@@ -10,10 +10,17 @@ import subprocess
 import sys
 from os.path import abspath, dirname
 from pathlib import Path
+from typing import Optional
 
 import click
 
 from pybitcask.bitcask import Bitcask
+from pybitcask.rotation import (
+    CompositeRotation,
+    EntryCountRotation,
+    SizeBasedRotation,
+    TimeBasedRotation,
+)
 
 # Add the project root to Python path
 project_root = dirname(dirname(dirname(dirname(abspath(__file__)))))
@@ -27,13 +34,23 @@ class BitcaskCLI:
     through a command-line interface, including data operations and mode switching.
     """
 
-    def __init__(self, data_dir: str = "./data", debug_mode: bool = False):
+    def __init__(
+        self,
+        data_dir: str = "./data",
+        debug_mode: bool = False,
+        max_file_size: Optional[int] = None,
+        max_entries: Optional[int] = None,
+        rotation_interval: Optional[int] = None,
+    ):
         """Initialize the Bitcask CLI.
 
         Args:
         ----
             data_dir: Directory where the database files will be stored
             debug_mode: Whether to run in debug mode (human-readable format)
+            max_file_size: Maximum file size in bytes before rotation
+            max_entries: Maximum number of entries before rotation
+            rotation_interval: Time interval in seconds between rotations
 
         """
         self.data_dir = Path(data_dir)
@@ -45,16 +62,53 @@ class BitcaskCLI:
             with open(self.config_file) as f:
                 config = json.load(f)
                 self.debug_mode = config.get("debug_mode", debug_mode)
+                config_max_file_size = config.get("max_file_size")
+                config_max_entries = config.get("max_entries")
+                config_rotation_interval = config.get("rotation_interval")
         else:
             self.debug_mode = debug_mode
+            config_max_file_size = max_file_size
+            config_max_entries = max_entries
+            config_rotation_interval = rotation_interval
             self._save_config()
+
+        # Create rotation strategy if any rotation parameters are set
+        rotation_strategies = []
+        if config_max_file_size is not None:
+            rotation_strategies.append(SizeBasedRotation(config_max_file_size))
+        if config_max_entries is not None:
+            rotation_strategies.append(EntryCountRotation(config_max_entries))
+        if config_rotation_interval is not None:
+            rotation_strategies.append(TimeBasedRotation(config_rotation_interval))
+
+        self.rotation_strategy = (
+            CompositeRotation(rotation_strategies) if rotation_strategies else None
+        )
 
     def _save_config(self) -> None:
         """Save the current configuration to file.
 
-        This method writes the current debug mode setting to the config file.
+        This method writes the current settings to the config file.
         """
-        config = {"debug_mode": self.debug_mode}
+        max_file_size = None
+        max_entries = None
+        rotation_interval = None
+
+        if isinstance(self.rotation_strategy, CompositeRotation):
+            for strategy in self.rotation_strategy.strategies:
+                if isinstance(strategy, SizeBasedRotation):
+                    max_file_size = strategy.max_size_bytes
+                elif isinstance(strategy, EntryCountRotation):
+                    max_entries = strategy.max_entries
+                elif isinstance(strategy, TimeBasedRotation):
+                    rotation_interval = strategy.interval_seconds
+
+        config = {
+            "debug_mode": self.debug_mode,
+            "max_file_size": max_file_size,
+            "max_entries": max_entries,
+            "rotation_interval": rotation_interval,
+        }
         with open(self.config_file, "w") as f:
             json.dump(config, f)
 
@@ -65,7 +119,11 @@ class BitcaskCLI:
         and registers the cleanup handler.
         """
         if self.db is None:
-            self.db = Bitcask(self.data_dir, debug_mode=self.debug_mode)
+            self.db = Bitcask(
+                self.data_dir,
+                debug_mode=self.debug_mode,
+                rotation_strategy=self.rotation_strategy,
+            )
             atexit.register(self.close)
 
     def get_current_mode(self) -> str:
@@ -222,10 +280,31 @@ class BitcaskCLI:
 @click.group()
 @click.option("--data-dir", default="./data", help="Data directory path")
 @click.option("--debug", is_flag=True, help="Run in debug mode (human-readable format)")
+@click.option(
+    "--max-file-size",
+    type=int,
+    help="Maximum file size in bytes before rotation",
+)
+@click.option(
+    "--max-entries",
+    type=int,
+    help="Maximum number of entries before rotation",
+)
+@click.option(
+    "--rotation-interval",
+    type=int,
+    help="Time interval in seconds between rotations",
+)
 @click.pass_context
-def cli(ctx, data_dir, debug):
+def cli(ctx, data_dir, debug, max_file_size, max_entries, rotation_interval):
     """Bitcask CLI - A command-line interface for the Bitcask key-value store."""
-    ctx.obj = BitcaskCLI(data_dir, debug_mode=debug)
+    ctx.obj = BitcaskCLI(
+        data_dir,
+        debug_mode=debug,
+        max_file_size=max_file_size,
+        max_entries=max_entries,
+        rotation_interval=rotation_interval,
+    )
 
 
 @cli.command()
@@ -292,6 +371,98 @@ def normal(cli: BitcaskCLI):
 def show(cli: BitcaskCLI):
     """Show the current mode."""
     cli.show_mode()
+
+
+@cli.group()
+def config():
+    """Manage database configuration settings."""
+    pass
+
+
+@config.command()
+@click.option(
+    "--max-file-size",
+    type=int,
+    help="Maximum file size in bytes before rotation",
+)
+@click.option(
+    "--max-entries",
+    type=int,
+    help="Maximum number of entries before rotation",
+)
+@click.option(
+    "--rotation-interval",
+    type=int,
+    help="Time interval in seconds between rotations",
+)
+@click.pass_obj
+def set(cli: BitcaskCLI, max_file_size, max_entries, rotation_interval):
+    """Set rotation configuration parameters."""
+    try:
+        # Create rotation strategy if any rotation parameters are set
+        rotation_strategies = []
+        if max_file_size is not None:
+            rotation_strategies.append(SizeBasedRotation(max_file_size))
+        if max_entries is not None:
+            rotation_strategies.append(EntryCountRotation(max_entries))
+        if rotation_interval is not None:
+            rotation_strategies.append(TimeBasedRotation(rotation_interval))
+
+        cli.rotation_strategy = (
+            CompositeRotation(rotation_strategies) if rotation_strategies else None
+        )
+
+        # Ensure the database is using the new rotation strategy
+        if cli.db is not None:
+            cli.db.rotation_strategy = cli.rotation_strategy
+
+        cli._save_config()
+        click.echo(click.style("✓ Configuration updated successfully", fg="green"))
+    except Exception as e:
+        click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+
+
+@config.command()
+@click.pass_obj
+def view(cli: BitcaskCLI):
+    """Show current configuration settings."""
+    try:
+        max_file_size = None
+        max_entries = None
+        rotation_interval = None
+
+        if isinstance(cli.rotation_strategy, CompositeRotation):
+            for strategy in cli.rotation_strategy.strategies:
+                if isinstance(strategy, SizeBasedRotation):
+                    max_file_size = strategy.max_size_bytes
+                elif isinstance(strategy, EntryCountRotation):
+                    max_entries = strategy.max_entries
+                elif isinstance(strategy, TimeBasedRotation):
+                    rotation_interval = strategy.interval_seconds
+
+        config = {
+            "debug_mode": cli.debug_mode,
+            "max_file_size": max_file_size,
+            "max_entries": max_entries,
+            "rotation_interval": rotation_interval,
+        }
+        click.echo(click.style("Current configuration:", fg="blue"))
+        for key, value in config.items():
+            click.echo(f"{key}: {value}")
+    except Exception as e:
+        click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+
+
+@config.command()
+@click.pass_obj
+def reset(cli: BitcaskCLI):
+    """Reset all configuration settings to defaults."""
+    try:
+        cli.rotation_strategy = None
+        cli._save_config()
+        click.echo(click.style("✓ Configuration reset to defaults", fg="green"))
+    except Exception as e:
+        click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
 
 if __name__ == "__main__":

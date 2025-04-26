@@ -3,6 +3,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,8 +20,7 @@ class TestBitcask(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures before each test method."""
-        self.test_dir = Path("/Users/ashish/bitcask-test-dir")
-        self.test_dir.mkdir(exist_ok=True)
+        self.test_dir = Path(tempfile.mkdtemp(prefix="bitcask-test-"))
         self.db = Bitcask(str(self.test_dir))
 
     def tearDown(self):

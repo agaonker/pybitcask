@@ -6,10 +6,12 @@ import mmap
 import os
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .formats import BinaryFormat, DataFormat, JsonFormat, get_format_by_identifier
+from .rotation import RotationStrategy
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
@@ -27,19 +29,26 @@ class Bitcask:
     # Size of format identifier in bytes
     FORMAT_ID_SIZE = 1
 
-    def __init__(self, directory: str, debug_mode: bool = False):
+    def __init__(
+        self,
+        directory: str,
+        debug_mode: bool = False,
+        rotation_strategy: Optional[RotationStrategy] = None,
+    ):
         """Initialize a new Bitcask instance.
 
         Args:
         ----
             directory: The directory where data files will be stored.
             debug_mode: If True, writes data in human-readable format.
+            rotation_strategy: Strategy for file rotation (optional).
 
         """
         self.data_dir = Path(directory)
         self.data_dir.mkdir(exist_ok=True)
         self.debug_mode = debug_mode
         self.format: DataFormat = JsonFormat() if debug_mode else BinaryFormat()
+        self.rotation_strategy = rotation_strategy
         logger.debug("Initialized with format: %s", self.format.__class__.__name__)
 
         # In-memory index: key -> (file_id, value_size, value_pos, timestamp)
@@ -49,6 +58,8 @@ class Bitcask:
         self.active_file: Optional[mmap.mmap] = None
         self.active_file_id: int = 0
         self.active_file_path: Optional[Path] = None
+        self.active_file_entry_count: int = 0
+        self.active_file_last_write: Optional[datetime] = None
 
         # Lock for thread safety
         self._lock = threading.Lock()
@@ -70,9 +81,24 @@ class Bitcask:
             logger.debug("No existing data files found, creating new one")
             self._create_new_data_file()
 
+    def _should_rotate(self) -> bool:
+        """Check if the current file should be rotated."""
+        if self.rotation_strategy is None:
+            return False
+
+        if self.active_file is None or self.active_file_last_write is None:
+            return False
+
+        file_size = self.active_file.tell()
+        return self.rotation_strategy.should_rotate(
+            file_size,
+            self.active_file_entry_count,
+            self.active_file_last_write,
+        )
+
     def _create_new_data_file(self):
         """Create a new data file for writing."""
-        self.active_file_id = 0
+        self.active_file_id += 1
         self.active_file_path = self.data_dir / f"data_{self.active_file_id}.db"
         self.active_file_path.touch()
         self._open_active_file()
@@ -81,6 +107,8 @@ class Bitcask:
         logger.debug("Writing format identifier %r to new file", identifier)
         self.active_file.write(identifier)
         self.active_file.flush()
+        self.active_file_entry_count = 0
+        self.active_file_last_write = datetime.now()
 
     def _open_active_file(self):
         """Open the active file for writing."""
@@ -134,7 +162,7 @@ class Bitcask:
         """Build the in-memory index from data files."""
         self.index.clear()
         self.active_file = None
-        self.active_file_id = None
+        self.active_file_id = 0
 
         # Get all data files
         data_files = sorted(
@@ -151,8 +179,9 @@ class Bitcask:
             return
 
         # Process each data file
-        for file_id, filename in enumerate(data_files):
+        for filename in data_files:
             file_path = os.path.join(self.data_dir, filename)
+            file_id = int(filename.split("_")[1].split(".")[0])
             with open(file_path, "rb") as f:
                 # Read format identifier
                 format_byte = f.read(1)
@@ -171,27 +200,31 @@ class Bitcask:
                         if key is None:  # End of file
                             break
 
-                        # Only add to index if not a tombstone
-                        if value is not None:
-                            record_pos = f.tell() - record_size
-                            self.index[key] = {
-                                "file_id": file_id,
-                                "pos": record_pos,
-                                "size": record_size,
-                                "timestamp": timestamp,
-                            }
-                    except ValueError as e:
-                        logger.warning(f"Error reading record in {filename}: {str(e)}")
+                        # Update index
+                        self.index[key] = {
+                            "file_id": file_id,
+                            "value_size": len(str(value).encode()),
+                            "value_pos": f.tell() - record_size,
+                            "timestamp": timestamp,
+                        }
+                    except Exception as e:
+                        logger.error(f"Error reading record from {filename}: {e}")
                         break
 
-        # Set active file to the last one
-        self.active_file_id = len(data_files) - 1
-        self.active_file = open(os.path.join(self.data_dir, data_files[-1]), "ab")
+        # Set active file to the latest one
+        if data_files:
+            self.active_file_id = int(data_files[-1].split("_")[1].split(".")[0])
+            self.active_file_path = self.data_dir / data_files[-1]
+            self._open_active_file()
+        else:
+            self._create_new_data_file()
 
     def put(self, key: str, value: Any) -> None:
         """Store a key-value pair."""
         with self._lock:
             if self.active_file is None:
+                self._create_new_data_file()
+            elif self._should_rotate():
                 self._create_new_data_file()
 
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
@@ -201,12 +234,14 @@ class Bitcask:
             record_pos = self.active_file.tell()
             self.active_file.write(record)
             self.active_file.flush()
+            self.active_file_entry_count += 1
+            self.active_file_last_write = datetime.now()
 
             # Update index
             self.index[key] = {
                 "file_id": self.active_file_id,
-                "pos": record_pos,
-                "size": len(record),
+                "value_size": len(str(value).encode()),
+                "value_pos": record_pos,
                 "timestamp": timestamp,
             }
             logger.debug(
@@ -225,16 +260,17 @@ class Bitcask:
         file_path = os.path.join(self.data_dir, f"data_{entry['file_id']}.db")
 
         with open(file_path, "rb") as f:
-            # Skip format identifier
-            f.read(1)
-            f.seek(entry["pos"])
+            # Read format identifier
+            format_byte = f.read(1)
+            if not format_byte:
+                return None
 
-            # Read the record
-            format = get_format_by_identifier(f.read(1))
+            format = get_format_by_identifier(format_byte)
             if not format:
                 raise ValueError("Unknown format identifier")
 
-            key, value, timestamp = format.decode_record(f.read(entry["size"] - 1))
+            f.seek(entry["value_pos"])
+            key, value, _, _ = format.read_record(f)
             return value
 
     def list_keys(self) -> list[str]:
@@ -273,14 +309,14 @@ class Bitcask:
                 record = self.format.encode_record(key, value, timestamp)
 
                 # Write to active file
+                record_pos = self.active_file.tell()
                 self.active_file.write(record)
-                record_pos = self.active_file.tell() - len(record)
 
                 # Update index
                 self.index[key] = {
                     "file_id": self.active_file_id,
-                    "pos": record_pos,
-                    "size": len(record),
+                    "value_size": len(str(value).encode()),
+                    "value_pos": record_pos,
                     "timestamp": timestamp,
                 }
                 logger.debug(
@@ -292,6 +328,8 @@ class Bitcask:
 
             # Flush all writes at once
             self.active_file.flush()
+            self.active_file_entry_count += len(data)
+            self.active_file_last_write = datetime.now()
 
     def close(self):
         """Close the database."""
