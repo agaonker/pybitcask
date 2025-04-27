@@ -16,6 +16,7 @@ license = { text = "MIT" }
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "freezegun>=1.0.0",
 ]
 benchmark = [
     "lmdb>=1.4.1",
@@ -32,7 +33,8 @@ dev = [
     "isort>=5.13.0",
     "mypy>=1.0.0",
     "ruff>=0.3.0",
-    "coverage>=7.0.0"
+    "coverage>=7.0.0",
+    "freezegun>=1.0.0",
 ]
 
 [tool.pytest.ini_options]

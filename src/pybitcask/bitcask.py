@@ -90,11 +90,19 @@ class Bitcask:
             return False
 
         file_size = self.active_file.tell()
-        return self.rotation_strategy.should_rotate(
+        should_rotate = self.rotation_strategy.should_rotate(
+            file_size=file_size,
+            entry_count=self.active_file_entry_count,
+            last_write_time=self.active_file_last_write,
+        )
+        logger.debug(
+            "Rotation check: size=%d, entries=%d, last_write=%s, should_rotate=%s",
             file_size,
             self.active_file_entry_count,
             self.active_file_last_write,
+            should_rotate,
         )
+        return should_rotate
 
     def _create_new_data_file(self):
         """Create a new data file for writing."""
@@ -224,17 +232,23 @@ class Bitcask:
         with self._lock:
             if self.active_file is None:
                 self._create_new_data_file()
-            elif self._should_rotate():
-                self._create_new_data_file()
 
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
             record = self.format.encode_record(key, value, timestamp)
+
+            # Increment entry count before rotation check
+            self.active_file_entry_count += 1
+
+            # Check for rotation after incrementing entry count
+            if self._should_rotate():
+                self._create_new_data_file()
+                # Reset entry count for new file
+                self.active_file_entry_count = 1
 
             # Write to active file
             record_pos = self.active_file.tell()
             self.active_file.write(record)
             self.active_file.flush()
-            self.active_file_entry_count += 1
             self.active_file_last_write = datetime.now()
 
             # Update index

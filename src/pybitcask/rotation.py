@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
 
 
 class RotationStrategy(ABC):
@@ -66,37 +65,6 @@ class EntryCountRotation(RotationStrategy):
     ) -> bool:
         """Check if entry count exceeds maximum."""
         return entry_count >= self.max_entries
-
-
-class TimeBasedRotation(RotationStrategy):
-    """Rotate files based on time intervals."""
-
-    def __init__(self, interval_seconds: int):
-        """Initialize time-based rotation.
-
-        Args:
-        ----
-            interval_seconds: Number of seconds between rotations
-
-        """
-        self.interval_seconds = interval_seconds
-        self.last_rotation_time: Optional[datetime] = None
-
-    def should_rotate(
-        self, file_size: int, entry_count: int, last_write_time: datetime
-    ) -> bool:
-        """Check if enough time has passed since last rotation."""
-        if self.last_rotation_time is None:
-            self.last_rotation_time = last_write_time
-            return False
-
-        time_since_rotation = (
-            last_write_time - self.last_rotation_time
-        ).total_seconds()
-        if time_since_rotation >= self.interval_seconds:
-            self.last_rotation_time = last_write_time
-            return True
-        return False
 
 
 class CompositeRotation(RotationStrategy):
