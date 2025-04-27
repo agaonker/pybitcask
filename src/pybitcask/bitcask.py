@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .formats import BinaryFormat, DataFormat, JsonFormat, get_format_by_identifier
-from .rotation import RotationStrategy
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
@@ -33,7 +32,6 @@ class Bitcask:
         self,
         directory: str,
         debug_mode: bool = False,
-        rotation_strategy: Optional[RotationStrategy] = None,
     ):
         """Initialize a new Bitcask instance.
 
@@ -41,14 +39,12 @@ class Bitcask:
         ----
             directory: The directory where data files will be stored.
             debug_mode: If True, writes data in human-readable format.
-            rotation_strategy: Strategy for file rotation (optional).
 
         """
         self.data_dir = Path(directory)
         self.data_dir.mkdir(exist_ok=True)
         self.debug_mode = debug_mode
         self.format: DataFormat = JsonFormat() if debug_mode else BinaryFormat()
-        self.rotation_strategy = rotation_strategy
         logger.debug("Initialized with format: %s", self.format.__class__.__name__)
 
         # In-memory index: key -> (file_id, value_size, value_pos, timestamp)
@@ -81,41 +77,6 @@ class Bitcask:
             logger.debug("No existing data files found, creating new one")
             self.active_file_id = 0  # Start from 0
             self._create_new_data_file()
-
-    def _should_rotate(self, record_size: Optional[int] = None) -> bool:
-        """Check if the current file should be rotated.
-
-        Args:
-        ----
-            record_size: Size of the record about to be written (optional)
-
-        Returns:
-        -------
-            bool: True if the file should be rotated, False otherwise
-
-        """
-        if self.rotation_strategy is None:
-            return False
-
-        if self.active_file is None or self.active_file_last_write is None:
-            return False
-
-        current_size = self.active_file.tell()
-        expected_size = current_size + (record_size or 0)
-
-        should_rotate = self.rotation_strategy.should_rotate(
-            file_size=expected_size,
-            entry_count=self.active_file_entry_count,
-            last_write_time=self.active_file_last_write,
-        )
-        logger.debug(
-            "Rotation check: size=%d, entries=%d, last_write=%s, should_rotate=%s",
-            expected_size,
-            self.active_file_entry_count,
-            self.active_file_last_write,
-            should_rotate,
-        )
-        return should_rotate
 
     def _create_new_data_file(self):
         """Create a new data file for writing."""
@@ -253,10 +214,6 @@ class Bitcask:
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
             record = self.format.encode_record(key, value, timestamp)
 
-            # Check if writing this record would exceed size limit
-            if self._should_rotate(len(record)):
-                self._create_new_data_file()
-
             # Write to active file
             record_pos = self.active_file.tell()
             self.active_file.write(record)
@@ -315,13 +272,7 @@ class Bitcask:
                 return None
 
     def list_keys(self) -> list[str]:
-        """List all keys in the database.
-
-        Returns
-        -------
-            A list of all keys in the database.
-
-        """
+        """List all keys in the database."""
         return list(self.index.keys())
 
     def delete(self, key: str) -> None:
@@ -337,13 +288,7 @@ class Bitcask:
                 logger.debug("Deleted key: %s", key)
 
     def batch_write(self, data: Dict[str, Any]) -> None:
-        """Write multiple key-value pairs in a single operation.
-
-        Args:
-        ----
-            data: Dictionary of key-value pairs to write.
-
-        """
+        """Write multiple key-value pairs in a single operation."""
         with self._lock:
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
             for key, value in data.items():
@@ -380,14 +325,7 @@ class Bitcask:
             logger.debug("Closed database")
 
     def clear(self) -> None:
-        """Delete all data and start fresh.
-
-        This will:
-        1. Close any open files
-        2. Delete all data files
-        3. Clear the in-memory index
-        4. Create a new empty database
-        """
+        """Delete all data and start fresh."""
         # Close any open files
         self.close()
 
