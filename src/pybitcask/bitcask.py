@@ -79,25 +79,38 @@ class Bitcask:
             self._build_index()
         else:
             logger.debug("No existing data files found, creating new one")
+            self.active_file_id = 0  # Start from 0
             self._create_new_data_file()
 
-    def _should_rotate(self) -> bool:
-        """Check if the current file should be rotated."""
+    def _should_rotate(self, record_size: Optional[int] = None) -> bool:
+        """Check if the current file should be rotated.
+
+        Args:
+        ----
+            record_size: Size of the record about to be written (optional)
+
+        Returns:
+        -------
+            bool: True if the file should be rotated, False otherwise
+
+        """
         if self.rotation_strategy is None:
             return False
 
         if self.active_file is None or self.active_file_last_write is None:
             return False
 
-        file_size = self.active_file.tell()
+        current_size = self.active_file.tell()
+        expected_size = current_size + (record_size or 0)
+
         should_rotate = self.rotation_strategy.should_rotate(
-            file_size=file_size,
+            file_size=expected_size,
             entry_count=self.active_file_entry_count,
             last_write_time=self.active_file_last_write,
         )
         logger.debug(
             "Rotation check: size=%d, entries=%d, last_write=%s, should_rotate=%s",
-            file_size,
+            expected_size,
             self.active_file_entry_count,
             self.active_file_last_write,
             should_rotate,
@@ -106,10 +119,14 @@ class Bitcask:
 
     def _create_new_data_file(self):
         """Create a new data file for writing."""
+        if self.active_file is not None:
+            self.active_file.close()
+
         self.active_file_id += 1
         self.active_file_path = self.data_dir / f"data_{self.active_file_id}.db"
         self.active_file_path.touch()
         self._open_active_file()
+
         # Write format identifier at the start of the file
         identifier = self.format.get_format_identifier()
         logger.debug("Writing format identifier %r to new file", identifier)
@@ -236,22 +253,20 @@ class Bitcask:
             timestamp = int(time.time() * 1000)  # Current time in milliseconds
             record = self.format.encode_record(key, value, timestamp)
 
-            # Increment entry count before rotation check
-            self.active_file_entry_count += 1
-
-            # Check for rotation after incrementing entry count
-            if self._should_rotate():
+            # Check if writing this record would exceed size limit
+            if self._should_rotate(len(record)):
                 self._create_new_data_file()
-                # Reset entry count for new file
-                self.active_file_entry_count = 1
 
             # Write to active file
             record_pos = self.active_file.tell()
             self.active_file.write(record)
-            self.active_file.flush()
+            self.active_file.flush()  # Ensure data is written to disk
+
+            # Update entry count and last write time
+            self.active_file_entry_count += 1
             self.active_file_last_write = datetime.now()
 
-            # Update index
+            # Update index with current file info
             self.index[key] = {
                 "file_id": self.active_file_id,
                 "value_size": len(str(value).encode()),
@@ -266,26 +281,38 @@ class Bitcask:
             )
 
     def get(self, key: str) -> Optional[Any]:
-        """Get a value by key."""
-        if key not in self.index:
-            return None
-
-        entry = self.index[key]
-        file_path = os.path.join(self.data_dir, f"data_{entry['file_id']}.db")
-
-        with open(file_path, "rb") as f:
-            # Read format identifier
-            format_byte = f.read(1)
-            if not format_byte:
+        """Retrieve a value by key."""
+        with self._lock:
+            if key not in self.index:
                 return None
 
-            format = get_format_by_identifier(format_byte)
-            if not format:
-                raise ValueError("Unknown format identifier")
+            entry = self.index[key]
+            file_path = self.data_dir / f"data_{entry['file_id']}.db"
 
-            f.seek(entry["value_pos"])
-            key, value, _, _ = format.read_record(f)
-            return value
+            if not file_path.exists():
+                logger.error(f"Data file not found: {file_path}")
+                return None
+
+            try:
+                with open(file_path, "rb") as f:
+                    # Read format identifier
+                    format_byte = f.read(1)
+                    if not format_byte:
+                        return None
+
+                    format = get_format_by_identifier(format_byte)
+                    if not format:
+                        logger.warning(f"Unknown format in {file_path}")
+                        return None
+
+                    # Seek to value position
+                    f.seek(entry["value_pos"])
+                    key, value, _, _ = format.read_record(f)
+                    return value
+
+            except Exception as e:
+                logger.error(f"Error reading value for key {key}: {e}")
+                return None
 
     def list_keys(self) -> list[str]:
         """List all keys in the database.

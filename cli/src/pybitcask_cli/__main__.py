@@ -16,10 +16,8 @@ import click
 
 from pybitcask.bitcask import Bitcask
 from pybitcask.rotation import (
-    CompositeRotation,
     EntryCountRotation,
     SizeBasedRotation,
-    TimeBasedRotation,
 )
 
 # Add the project root to Python path
@@ -31,7 +29,8 @@ class BitcaskCLI:
     """Command-line interface for the Bitcask key-value store.
 
     This class provides methods for interacting with the Bitcask database
-    through a command-line interface, including data operations and mode switching.
+    through a command-line interface, including data operations and mode
+    switching.
     """
 
     def __init__(
@@ -73,16 +72,17 @@ class BitcaskCLI:
             self._save_config()
 
         # Create rotation strategy if any rotation parameters are set
-        rotation_strategies = []
-        if config_max_file_size is not None:
-            rotation_strategies.append(SizeBasedRotation(config_max_file_size))
-        if config_max_entries is not None:
-            rotation_strategies.append(EntryCountRotation(config_max_entries))
-        if config_rotation_interval is not None:
-            rotation_strategies.append(TimeBasedRotation(config_rotation_interval))
-
+        rotation_strategy = {
+            "max_size_bytes": config_max_file_size,
+            "max_entries": config_max_entries,
+            "rotation_interval": config_rotation_interval,
+        }
         self.rotation_strategy = (
-            CompositeRotation(rotation_strategies) if rotation_strategies else None
+            SizeBasedRotation(rotation_strategy["max_size_bytes"])
+            if "max_size_bytes" in rotation_strategy
+            else EntryCountRotation(rotation_strategy["max_entries"])
+            if "max_entries" in rotation_strategy
+            else None
         )
 
     def _save_config(self) -> None:
@@ -94,14 +94,21 @@ class BitcaskCLI:
         max_entries = None
         rotation_interval = None
 
-        if isinstance(self.rotation_strategy, CompositeRotation):
-            for strategy in self.rotation_strategy.strategies:
-                if isinstance(strategy, SizeBasedRotation):
-                    max_file_size = strategy.max_size_bytes
-                elif isinstance(strategy, EntryCountRotation):
-                    max_entries = strategy.max_entries
-                elif isinstance(strategy, TimeBasedRotation):
-                    rotation_interval = strategy.interval_seconds
+        if self.rotation_strategy is not None:
+            if isinstance(
+                self.rotation_strategy, (SizeBasedRotation, EntryCountRotation)
+            ):
+                rotation_config = {
+                    "max_size_bytes": self.rotation_strategy.max_size_bytes
+                    if isinstance(self.rotation_strategy, SizeBasedRotation)
+                    else None,
+                    "max_entries": self.rotation_strategy.max_entries
+                    if isinstance(self.rotation_strategy, EntryCountRotation)
+                    else None,
+                }
+                max_file_size = rotation_config["max_size_bytes"]
+                max_entries = rotation_config["max_entries"]
+                rotation_interval = rotation_config["rotation_interval"]
 
         config = {
             "debug_mode": self.debug_mode,
@@ -140,9 +147,8 @@ class BitcaskCLI:
         try:
             self.ensure_db()
             self.db.put(key, value)
-            click.echo(
-                click.style(f"✓ Successfully stored value for key: {key}", fg="green")
-            )
+            msg = f"✓ Successfully stored value for key: {key}"
+            click.echo(click.style(msg, fg="green"))
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
@@ -152,7 +158,8 @@ class BitcaskCLI:
             self.ensure_db()
             value = self.db.get(key)
             if value is None:
-                click.echo(click.style(f"✗ Key '{key}' not found", fg="yellow"))
+                msg = f"✗ Key '{key}' not found"
+                click.echo(click.style(msg, fg="yellow"))
                 return
             click.echo(click.style(f"Value for key '{key}':", fg="blue"))
             click.echo(value)
@@ -164,11 +171,11 @@ class BitcaskCLI:
         try:
             self.ensure_db()
             if self.db.delete(key):
-                click.echo(
-                    click.style(f"✓ Successfully deleted key: {key}", fg="green")
-                )
+                msg = f"✓ Successfully deleted key: {key}"
+                click.echo(click.style(msg, fg="green"))
             else:
-                click.echo(click.style(f"✗ Key '{key}' not found", fg="yellow"))
+                msg = f"✗ Key '{key}' not found"
+                click.echo(click.style(msg, fg="yellow"))
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
@@ -189,18 +196,17 @@ class BitcaskCLI:
     def start_server(self, port: int = 8000) -> None:
         """Start the Bitcask server."""
         try:
-            click.echo(
-                click.style(f"Starting Bitcask server on port {port}...", fg="blue")
-            )
-            self.server_process = subprocess.Popen(
-                ["python", "server.py", "--port", str(port)],
-                cwd=dirname(dirname(abspath(__file__))),
-            )
+            msg = f"Starting Bitcask server on port {port}..."
+            click.echo(click.style(msg, fg="blue"))
+            cwd = dirname(dirname(abspath(__file__)))
+            cmd = ["python", "server.py", "--port", str(port)]
+            self.server_process = subprocess.Popen(cmd, cwd=cwd)
             atexit.register(self.stop_server)
             self.server_url = f"http://localhost:{port}"
             click.echo(click.style("✓ Server started successfully", fg="green"))
         except Exception as e:
-            click.echo(click.style(f"✗ Error starting server: {e}", fg="red"), err=True)
+            msg = f"✗ Error starting server: {e}"
+            click.echo(click.style(msg, fg="red"), err=True)
 
     def stop_server(self) -> None:
         """Stop the Bitcask server."""
@@ -237,17 +243,11 @@ class BitcaskCLI:
         try:
             # Show warning and get confirmation
             mode = "debug" if debug_mode else "normal"
-            click.echo(
-                click.style(
-                    "⚠️ WARNING: Switching modes will delete ALL data!",
-                    fg="yellow",
-                    bold=True,
-                )
-            )
+            msg = "⚠️ WARNING: Switching modes will delete ALL data!"
+            click.echo(click.style(msg, fg="yellow", bold=True))
             click.echo(click.style("This action cannot be undone.", fg="yellow"))
-            if not click.confirm(
-                click.style(f"Do you want to switch to {mode} mode?", fg="yellow")
-            ):
+            confirm_msg = f"Do you want to switch to {mode} mode?"
+            if not click.confirm(click.style(confirm_msg, fg="yellow")):
                 click.echo(click.style("Mode switch cancelled", fg="blue"))
                 return
 
@@ -259,9 +259,7 @@ class BitcaskCLI:
             # Delete all data files and clear the directory
             if self.data_dir.exists():
                 for file in self.data_dir.glob("*"):
-                    if (
-                        file.is_file() and file.name != "config.json"
-                    ):  # Don't delete config file
+                    if file.is_file() and file.name != "config.json":
                         file.unlink()
                 # Recreate the directory if it was deleted
                 self.data_dir.mkdir(exist_ok=True)
@@ -400,16 +398,17 @@ def set(cli: BitcaskCLI, max_file_size, max_entries, rotation_interval):
     """Set rotation configuration parameters."""
     try:
         # Create rotation strategy if any rotation parameters are set
-        rotation_strategies = []
-        if max_file_size is not None:
-            rotation_strategies.append(SizeBasedRotation(max_file_size))
-        if max_entries is not None:
-            rotation_strategies.append(EntryCountRotation(max_entries))
-        if rotation_interval is not None:
-            rotation_strategies.append(TimeBasedRotation(rotation_interval))
-
+        rotation_strategy = {
+            "max_size_bytes": max_file_size,
+            "max_entries": max_entries,
+            "rotation_interval": rotation_interval,
+        }
         cli.rotation_strategy = (
-            CompositeRotation(rotation_strategies) if rotation_strategies else None
+            SizeBasedRotation(rotation_strategy["max_size_bytes"])
+            if "max_size_bytes" in rotation_strategy
+            else EntryCountRotation(rotation_strategy["max_entries"])
+            if "max_entries" in rotation_strategy
+            else None
         )
 
         # Ensure the database is using the new rotation strategy
@@ -417,7 +416,8 @@ def set(cli: BitcaskCLI, max_file_size, max_entries, rotation_interval):
             cli.db.rotation_strategy = cli.rotation_strategy
 
         cli._save_config()
-        click.echo(click.style("✓ Configuration updated successfully", fg="green"))
+        msg = "✓ Configuration updated successfully"
+        click.echo(click.style(msg, fg="green"))
     except Exception as e:
         click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
@@ -431,14 +431,26 @@ def view(cli: BitcaskCLI):
         max_entries = None
         rotation_interval = None
 
-        if isinstance(cli.rotation_strategy, CompositeRotation):
-            for strategy in cli.rotation_strategy.strategies:
-                if isinstance(strategy, SizeBasedRotation):
-                    max_file_size = strategy.max_size_bytes
-                elif isinstance(strategy, EntryCountRotation):
-                    max_entries = strategy.max_entries
-                elif isinstance(strategy, TimeBasedRotation):
-                    rotation_interval = strategy.interval_seconds
+        if cli.rotation_strategy is not None:
+            if isinstance(
+                cli.rotation_strategy,
+                (SizeBasedRotation, EntryCountRotation),
+            ):
+                rotation_config = {
+                    "max_size_bytes": (
+                        cli.rotation_strategy.max_size_bytes
+                        if isinstance(cli.rotation_strategy, SizeBasedRotation)
+                        else None
+                    ),
+                    "max_entries": (
+                        cli.rotation_strategy.max_entries
+                        if isinstance(cli.rotation_strategy, EntryCountRotation)
+                        else None
+                    ),
+                }
+                max_file_size = rotation_config["max_size_bytes"]
+                max_entries = rotation_config["max_entries"]
+                rotation_interval = rotation_config["rotation_interval"]
 
         config = {
             "debug_mode": cli.debug_mode,
@@ -460,7 +472,8 @@ def reset(cli: BitcaskCLI):
     try:
         cli.rotation_strategy = None
         cli._save_config()
-        click.echo(click.style("✓ Configuration reset to defaults", fg="green"))
+        msg = "✓ Configuration reset to defaults"
+        click.echo(click.style(msg, fg="green"))
     except Exception as e:
         click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 

@@ -65,26 +65,3 @@ class EntryCountRotation(RotationStrategy):
     ) -> bool:
         """Check if entry count exceeds maximum."""
         return entry_count >= self.max_entries
-
-
-class CompositeRotation(RotationStrategy):
-    """Combine multiple rotation strategies."""
-
-    def __init__(self, strategies: list[RotationStrategy]):
-        """Initialize composite rotation.
-
-        Args:
-        ----
-            strategies: List of rotation strategies to combine
-
-        """
-        self.strategies = strategies
-
-    def should_rotate(
-        self, file_size: int, entry_count: int, last_write_time: datetime
-    ) -> bool:
-        """Check if any strategy indicates rotation is needed."""
-        return any(
-            strategy.should_rotate(file_size, entry_count, last_write_time)
-            for strategy in self.strategies
-        )
