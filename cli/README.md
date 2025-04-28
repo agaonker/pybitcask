@@ -66,7 +66,7 @@ pbc [OPTIONS] COMMAND [ARGS]...
 #### Mode Management
 
 The CLI supports two modes:
-- **Normal mode**: Uses binary format for efficient storage
+- **Normal mode**: Uses proto format for efficient storage
 - **Debug mode**: Uses human-readable JSON format
 
 1. **Switch to debug mode**

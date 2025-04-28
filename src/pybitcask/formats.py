@@ -1,7 +1,6 @@
 """Data format implementations for Bitcask."""
 
 import json
-import struct
 from abc import ABC, abstractmethod
 from typing import Any, Tuple
 
@@ -13,8 +12,7 @@ class DataFormat(ABC):
 
     # Format identifiers (1 byte)
     FORMAT_PROTO = b"\x01"  # Default format
-    FORMAT_BINARY = b"\x02"  # Binary format
-    FORMAT_JSON = b"\x03"  # JSON format
+    FORMAT_JSON = b"\x02"  # JSON format
     DEFAULT_FORMAT = FORMAT_PROTO  # Default format identifier
 
     @abstractmethod
@@ -139,72 +137,6 @@ class ProtoFormat(DataFormat):
             raise ValueError(f"Failed to read protobuf record: {str(e)}") from e
 
 
-class BinaryFormat(DataFormat):
-    """Binary format implementation."""
-
-    def get_format_identifier(self) -> bytes:
-        """Get the format identifier byte."""
-        return self.FORMAT_BINARY
-
-    def encode_record(self, key: str, value: Any, timestamp: int) -> bytes:
-        """Encode a record into binary format."""
-        value_bytes = json.dumps(value).encode("utf-8")
-        key_bytes = key.encode("utf-8")
-        header = struct.pack(">IIQ", len(key_bytes), len(value_bytes), timestamp)
-        return header + key_bytes + value_bytes
-
-    def decode_record(self, data: bytes) -> Tuple[str, Any, int]:
-        """Decode binary format into a record."""
-        try:
-            # First 16 bytes are the header
-            key_size, value_size, timestamp = struct.unpack(">IIQ", data[:16])
-
-            # Next key_size bytes are the key
-            key = data[16 : 16 + key_size].decode("utf-8")
-
-            # Next value_size bytes are the value
-            value_bytes = data[16 + key_size : 16 + key_size + value_size]
-            value = json.loads(value_bytes.decode("utf-8"))
-
-            return key, value, timestamp
-        except (struct.error, json.JSONDecodeError, UnicodeDecodeError) as err:
-            raise ValueError(f"Failed to decode binary record: {str(err)}") from err
-
-    def encode_tombstone(self, key: str, timestamp: int) -> bytes:
-        """Encode a tombstone in binary format."""
-        key_bytes = key.encode("utf-8")
-        header = struct.pack(">IIQ", len(key_bytes), 0, timestamp)
-        return header + key_bytes
-
-    def read_record(self, file) -> Tuple[str, Any, int, int, bool]:
-        """Read a record from a file in binary format.
-
-        Returns
-        -------
-            Tuple of (key, value, timestamp, record_size, is_tombstone)
-
-        """
-        header = file.read(16)
-        if not header or len(header) < 16:
-            return None, None, None, None, False
-
-        try:
-            key_size, value_size, timestamp = struct.unpack(">IIQ", header)
-            key = file.read(key_size).decode("utf-8")
-
-            # Check if this is a tombstone (value_size = 0)
-            is_tombstone = value_size == 0
-            if is_tombstone:
-                return key, None, timestamp, 16 + key_size, True
-
-            value_bytes = file.read(value_size)
-            value = json.loads(value_bytes.decode("utf-8"))
-            total_size = 16 + key_size + value_size
-            return key, value, timestamp, total_size, False
-        except Exception as e:
-            raise ValueError(f"Failed to read binary record: {str(e)}") from e
-
-
 class JsonFormat(DataFormat):
     """JSON format implementation for human-readable storage."""
 
@@ -269,7 +201,6 @@ def get_format_by_identifier(identifier: bytes = None) -> DataFormat:
 
     format_map = {
         DataFormat.FORMAT_PROTO: ProtoFormat,
-        DataFormat.FORMAT_BINARY: BinaryFormat,
         DataFormat.FORMAT_JSON: JsonFormat,
     }
     format_class = format_map.get(identifier)

@@ -282,7 +282,7 @@ def debug(cli: BitcaskCLI):
 @mode.command()
 @click.pass_obj
 def normal(cli: BitcaskCLI):
-    """Switch to normal mode (binary format)."""
+    """Switch to normal mode (proto format)."""
     cli.switch_mode(debug_mode=False)
 
 
