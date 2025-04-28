@@ -6,11 +6,16 @@ authors = [
     { name = "Ashish Gaonker", email = "ashish.gec@gmail.com" }
 ]
 dependencies = [
-    "click>=8.1.0"
+    "click>=8.1.0",
+    "protobuf>=4.25.0"
 ]
 requires-python = ">=3.8"
 readme = "README.md"
 license = { text = "MIT" }
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "mypy-protobuf>=3.4.0"]
+build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
 test = [
@@ -35,7 +40,12 @@ dev = [
     "ruff>=0.3.0",
     "coverage>=7.0.0",
     "freezegun>=1.0.0",
+    "mypy-protobuf>=3.4.0"
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["pybitcask"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -75,6 +85,8 @@ exclude = [
     "__pycache__",
     "build",
     "dist",
+    "**/record_pb2.py",
+    "**/record_pb2.pyi",
 ]
 
 [tool.ruff.lint.isort]

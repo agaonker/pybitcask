@@ -59,6 +59,33 @@ This will:
    pytest tests/ -v
    ```
 
+## Development Setup
+
+1. Install Protocol Buffers compiler:
+   ```bash
+   # On macOS
+   brew install protobuf
+   ```
+
+2. After checking out the code, install the package in development mode:
+   ```bash
+   uv pip install -e .
+   ```
+   This will:
+   - Generate the protobuf files
+   - Install the package in editable mode
+   - Make all dependencies available
+
+3. For development with all tools:
+   ```bash
+   uv pip install -e ".[dev]"
+   ```
+
+4. To regenerate Protocol Buffers files:
+   ```bash
+   protoc --python_out=. --mypy_out=. src/pybitcask/proto/record.proto
+   ```
+
 ## Use Cases
 
 ### Ideal Use Cases

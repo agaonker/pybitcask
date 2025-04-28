@@ -10,7 +10,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .formats import BinaryFormat, DataFormat, JsonFormat, get_format_by_identifier
+from .formats import (
+    DataFormat,
+    JsonFormat,
+    ProtoFormat,
+    get_format_by_identifier,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
@@ -44,7 +49,7 @@ class Bitcask:
         self.data_dir = Path(directory)
         self.data_dir.mkdir(exist_ok=True)
         self.debug_mode = debug_mode
-        self.format: DataFormat = JsonFormat() if debug_mode else BinaryFormat()
+        self.format: DataFormat = JsonFormat() if debug_mode else ProtoFormat()
         logger.debug("Initialized with format: %s", self.format.__class__.__name__)
 
         # In-memory index: key -> (file_id, value_size, value_pos, timestamp)
@@ -182,17 +187,30 @@ class Bitcask:
                 # Read records
                 while True:
                     try:
-                        key, value, timestamp, record_size = format.read_record(f)
+                        key, value, timestamp, record_size, is_tombstone = (
+                            format.read_record(f)
+                        )
                         if key is None:  # End of file
                             break
 
-                        # Update index
-                        self.index[key] = {
-                            "file_id": file_id,
-                            "value_size": len(str(value).encode()),
-                            "value_pos": f.tell() - record_size,
-                            "timestamp": timestamp,
-                        }
+                        if is_tombstone:
+                            # Remove from index if it exists
+                            if key in self.index:
+                                del self.index[key]
+                            continue
+
+                        # Update index only if this is the latest record for the key
+                        current_entry = self.index.get(key)
+                        if (
+                            current_entry is None
+                            or current_entry["timestamp"] < timestamp
+                        ):
+                            self.index[key] = {
+                                "file_id": file_id,
+                                "value_size": len(str(value).encode()),
+                                "value_pos": f.tell() - record_size,
+                                "timestamp": timestamp,
+                            }
                     except Exception as e:
                         logger.error(f"Error reading record from {filename}: {e}")
                         break
@@ -264,7 +282,11 @@ class Bitcask:
 
                     # Seek to value position
                     f.seek(entry["value_pos"])
-                    key, value, _, _ = format.read_record(f)
+                    key, value, _, _, is_tombstone = format.read_record(f)
+                    if is_tombstone:
+                        # Remove from index if it's a tombstone
+                        del self.index[key]
+                        return None
                     return value
 
             except Exception as e:
@@ -275,17 +297,34 @@ class Bitcask:
         """List all keys in the database."""
         return list(self.index.keys())
 
-    def delete(self, key: str) -> None:
-        """Delete a key-value pair."""
-        with self._lock:
-            if key in self.index:
-                timestamp = int(time.time() * 1000)
-                tombstone = self.format.encode_tombstone(key, timestamp)
+    def delete(self, key: str) -> bool:
+        """Delete a key-value pair.
 
-                self.active_file.write(tombstone)
-                self.active_file.flush()
-                del self.index[key]
-                logger.debug("Deleted key: %s", key)
+        Returns
+        -------
+            bool: True if the key was deleted, False if the key was not found
+
+        """
+        with self._lock:
+            if key not in self.index:
+                return False
+
+            # Ensure we have an active file
+            if self.active_file is None:
+                self._create_new_data_file()
+
+            timestamp = int(time.time() * 1000)
+            tombstone = self.format.encode_tombstone(key, timestamp)
+
+            # Write tombstone and ensure it's flushed to disk
+            self.active_file.write(tombstone)
+            self.active_file.flush()
+            os.fsync(self.active_file.fileno())
+
+            # Remove from index
+            del self.index[key]
+            logger.debug("Deleted key: %s", key)
+            return True
 
     def batch_write(self, data: Dict[str, Any]) -> None:
         """Write multiple key-value pairs in a single operation."""
@@ -326,19 +365,20 @@ class Bitcask:
 
     def clear(self) -> None:
         """Delete all data and start fresh."""
-        # Close any open files
-        self.close()
+        with self._lock:
+            # Close any open files
+            if self.active_file:
+                self.active_file.close()
+                self.active_file = None
 
-        # Delete all data files
-        for data_file in self.data_dir.glob("*.data"):
-            data_file.unlink()
+            # Delete all data files
+            for data_file in self.data_dir.glob("data_*.db"):
+                data_file.unlink()
 
-        # Clear the index
-        self.index.clear()
+            # Clear the index
+            self.index.clear()
 
-        # Reset file counter
-        self.active_file_id = 0
-
-        # Create new empty database
-        self._create_new_data_file()
-        logger.debug("Database cleared and reset")
+            # Reset file counter and create new empty database
+            self.active_file_id = 0
+            self._create_new_data_file()
+            logger.debug("Database cleared and reset")

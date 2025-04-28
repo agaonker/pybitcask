@@ -56,6 +56,9 @@ class BitcaskCLI:
 
     def _save_config(self) -> None:
         """Save the current configuration to file."""
+        # Create data directory if it doesn't exist
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
         config = {
             "debug_mode": self.debug_mode,
         }
@@ -70,6 +73,11 @@ class BitcaskCLI:
                 debug_mode=self.debug_mode,
             )
             atexit.register(self.close)
+
+    def refresh_db(self) -> None:
+        """Close and reopen the database connection."""
+        self.close()
+        self.ensure_db()
 
     def get_current_mode(self) -> str:
         """Get the current mode as a string."""
@@ -87,6 +95,7 @@ class BitcaskCLI:
             self.db.put(key, value)
             msg = f"✓ Successfully stored value for key: {key}"
             click.echo(click.style(msg, fg="green"))
+            self.refresh_db()  # Refresh after write
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
@@ -111,6 +120,7 @@ class BitcaskCLI:
             if self.db.delete(key):
                 msg = f"✓ Successfully deleted key: {key}"
                 click.echo(click.style(msg, fg="green"))
+                self.refresh_db()  # Refresh after write
             else:
                 msg = f"✗ Key '{key}' not found"
                 click.echo(click.style(msg, fg="yellow"))
