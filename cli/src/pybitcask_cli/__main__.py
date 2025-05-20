@@ -10,10 +10,12 @@ import subprocess
 import sys
 from os.path import abspath, dirname
 from pathlib import Path
+from typing import Optional
 
 import click
 
 from pybitcask.bitcask import Bitcask
+from pybitcask.config import config as bitcask_config
 
 # Add the project root to Python path
 project_root = dirname(dirname(dirname(dirname(abspath(__file__)))))
@@ -30,8 +32,8 @@ class BitcaskCLI:
 
     def __init__(
         self,
-        data_dir: str = "./data",
-        debug_mode: bool = False,
+        data_dir: Optional[str] = None,
+        debug_mode: Optional[bool] = None,
     ):
         """Initialize the Bitcask CLI.
 
@@ -41,35 +43,19 @@ class BitcaskCLI:
             debug_mode: Whether to run in debug mode (human-readable format)
 
         """
-        self.data_dir = Path(data_dir)
-        self.config_file = self.data_dir / "config.json"
+        self.data_dir = bitcask_config.get_data_dir(data_dir)
+        self.debug_mode = (
+            debug_mode if debug_mode is not None else bitcask_config.get_debug_mode()
+        )
         self.db = None
-        self.debug_mode = debug_mode
-
-        # Load config if exists, otherwise use default
-        if self.config_file.exists():
-            with open(self.config_file) as f:
-                config = json.load(f)
-                self.debug_mode = config.get("debug_mode", debug_mode)
-        else:
-            self._save_config()
-
-    def _save_config(self) -> None:
-        """Save the current configuration to file."""
-        # Create data directory if it doesn't exist
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
-        config = {
-            "debug_mode": self.debug_mode,
-        }
-        with open(self.config_file, "w") as f:
-            json.dump(config, f)
+        self.server_process = None
+        self.server_url = None
 
     def ensure_db(self) -> None:
         """Ensure the database connection is established."""
         if self.db is None:
             self.db = Bitcask(
-                self.data_dir,
+                str(self.data_dir),
                 debug_mode=self.debug_mode,
             )
             atexit.register(self.close)
@@ -117,23 +103,20 @@ class BitcaskCLI:
         """Delete a value from the database."""
         try:
             self.ensure_db()
-            if self.db.delete(key):
-                msg = f"✓ Successfully deleted key: {key}"
-                click.echo(click.style(msg, fg="green"))
-                self.refresh_db()  # Refresh after write
-            else:
-                msg = f"✗ Key '{key}' not found"
-                click.echo(click.style(msg, fg="yellow"))
+            self.db.delete(key)
+            msg = f"✓ Successfully deleted key: {key}"
+            click.echo(click.style(msg, fg="green"))
+            self.refresh_db()  # Refresh after write
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
-    def list(self) -> None:
+    def list_keys(self) -> None:
         """List all keys in the database."""
         try:
             self.ensure_db()
             keys = self.db.list_keys()
             if not keys:
-                click.echo(click.style("No keys found", fg="yellow"))
+                click.echo(click.style("No keys found in database", fg="yellow"))
                 return
             click.echo(click.style("Available keys:", fg="blue"))
             for key in keys:
@@ -141,42 +124,21 @@ class BitcaskCLI:
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
-    def start_server(self, port: int = 8000) -> None:
-        """Start the Bitcask server."""
-        try:
-            msg = f"Starting Bitcask server on port {port}..."
-            click.echo(click.style(msg, fg="blue"))
-            cwd = dirname(dirname(abspath(__file__)))
-            cmd = ["python", "server.py", "--port", str(port)]
-            self.server_process = subprocess.Popen(cmd, cwd=cwd)
-            atexit.register(self.stop_server)
-            self.server_url = f"http://localhost:{port}"
-            click.echo(click.style("✓ Server started successfully", fg="green"))
-        except Exception as e:
-            msg = f"✗ Error starting server: {e}"
-            click.echo(click.style(msg, fg="red"), err=True)
-
-    def stop_server(self) -> None:
-        """Stop the Bitcask server."""
-        if self.server_process:
-            self.server_process.terminate()
-            self.server_process = None
-            self.server_url = None
-
-    def close(self):
-        """Close the database connection."""
-        if self.db is not None:
-            self.db.close()
-            self.db = None
-
     def clear(self) -> None:
         """Clear all data from the database."""
         try:
             self.ensure_db()
             self.db.clear()
-            click.echo(click.style("✓ Database cleared successfully", fg="green"))
+            msg = "✓ Successfully cleared all data"
+            click.echo(click.style(msg, fg="green"))
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if self.db is not None:
+            self.db.close()
+            self.db = None
 
     def switch_mode(self, debug_mode: bool) -> None:
         """Switch between debug and normal modes."""
@@ -199,24 +161,87 @@ class BitcaskCLI:
             # Delete all data files and clear the directory
             if self.data_dir.exists():
                 for file in self.data_dir.glob("*"):
-                    if file.is_file() and file.name != "config.json":
+                    if file.is_file():
                         file.unlink()
                 # Recreate the directory if it was deleted
                 self.data_dir.mkdir(exist_ok=True)
 
             # Switch mode and create new database
             self.debug_mode = debug_mode
-            self._save_config()  # Save the new mode
-            self.db = Bitcask(self.data_dir, debug_mode=self.debug_mode)
+            bitcask_config.set_debug_mode(debug_mode)  # Update global config
+            self.db = Bitcask(str(self.data_dir), debug_mode=self.debug_mode)
 
             click.echo(click.style(f"✓ Switched to {mode} mode", fg="green"))
             click.echo(click.style("✓ Database cleared completely", fg="green"))
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
+    def start_server(self, port: int = 8000) -> None:
+        """Start the Bitcask server.
+
+        Args:
+        ----
+            port: The port number to run the server on
+
+        """
+        try:
+            msg = f"Starting Bitcask server on port {port}..."
+            click.echo(click.style(msg, fg="blue"))
+
+            # Get the server script path
+            cwd = dirname(dirname(abspath(__file__)))
+            server_script = Path(cwd) / "server.py"
+
+            if not server_script.exists():
+                click.echo(
+                    click.style("✗ Error: Server script not found", fg="red"), err=True
+                )
+                return
+
+            # Start the server process with the current configuration
+            cmd = [
+                "python",
+                str(server_script),
+                "--port",
+                str(port),
+                "--data-dir",
+                str(self.data_dir),
+                "--debug" if self.debug_mode else "",
+            ]
+
+            self.server_process = subprocess.Popen(cmd, cwd=cwd)
+            atexit.register(self.stop_server)
+            self.server_url = f"http://localhost:{port}"
+
+            click.echo(click.style("✓ Server started successfully", fg="green"))
+            click.echo(click.style(f"Server URL: {self.server_url}", fg="blue"))
+        except Exception as e:
+            msg = f"✗ Error starting server: {e}"
+            click.echo(click.style(msg, fg="red"), err=True)
+
+    def stop_server(self) -> None:
+        """Stop the Bitcask server."""
+        if self.server_process:
+            try:
+                self.server_process.terminate()
+                self.server_process.wait(
+                    timeout=5
+                )  # Wait up to 5 seconds for graceful shutdown
+                click.echo(click.style("✓ Server stopped successfully", fg="green"))
+            except subprocess.TimeoutExpired:
+                self.server_process.kill()  # Force kill if graceful shutdown fails
+                click.echo(click.style("! Server forcefully stopped", fg="yellow"))
+            except Exception as e:
+                click.echo(
+                    click.style(f"✗ Error stopping server: {e}", fg="red"), err=True
+                )
+            finally:
+                self.server_process = None
+                self.server_url = None
+
 
 @click.group()
-@click.option("--data-dir", default="./data", help="Data directory path")
+@click.option("--data-dir", help="Data directory path")
 @click.option("--debug", is_flag=True, help="Run in debug mode (human-readable format)")
 @click.pass_context
 def cli(ctx, data_dir, debug):
@@ -256,7 +281,7 @@ def delete(cli: BitcaskCLI, key: str):
 @click.pass_obj
 def list(cli: BitcaskCLI):
     """List all keys in the database."""
-    cli.list()
+    cli.list_keys()
 
 
 @cli.command()
@@ -304,14 +329,14 @@ def config():
 def view(cli: BitcaskCLI):
     """View current configuration."""
     try:
-        if not cli.config_file.exists():
+        if not cli.data_dir.exists():
             click.echo(click.style("No configuration file found", fg="yellow"))
             return
 
-        with open(cli.config_file) as f:
-            config = json.load(f)
+        with open(cli.data_dir / "config.json") as f:
+            current_config = json.load(f)
             click.echo(click.style("Current configuration:", fg="blue"))
-            click.echo(f"  • Debug mode: {config.get('debug_mode', False)}")
+            click.echo(f"  • Debug mode: {current_config.get('debug_mode', False)}")
     except Exception as e:
         click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
@@ -321,11 +346,32 @@ def view(cli: BitcaskCLI):
 def reset(cli: BitcaskCLI):
     """Reset all configuration settings to defaults."""
     try:
-        cli._save_config()
+        bitcask_config.set_debug_mode(False)
         msg = "✓ Configuration reset to defaults"
         click.echo(click.style(msg, fg="green"))
     except Exception as e:
         click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+
+
+@cli.group()
+def server():
+    """Manage the Bitcask server."""
+    pass
+
+
+@server.command()
+@click.option("--port", default=8000, help="Port to run the server on")
+@click.pass_obj
+def start(cli: BitcaskCLI, port: int):
+    """Start the Bitcask server."""
+    cli.start_server(port)
+
+
+@server.command()
+@click.pass_obj
+def stop(cli: BitcaskCLI):
+    """Stop the Bitcask server."""
+    cli.stop_server()
 
 
 if __name__ == "__main__":

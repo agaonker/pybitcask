@@ -19,8 +19,24 @@ pbc [OPTIONS] COMMAND [ARGS]...
 
 ### Global Options
 
-- `--data-dir PATH`: Specify the data directory (default: "./data")
+- `--data-dir PATH`: Specify the data directory (overrides configuration)
 - `--debug`: Run in debug mode (human-readable format)
+
+### Configuration
+
+PyBitcask uses a configuration system that follows platform-specific conventions:
+
+#### Data Directory Locations
+- macOS: `~/Library/Application Support/pybitcask`
+- Linux: `/var/lib/pybitcask`
+- Windows: `C:\ProgramData\pybitcask`
+- Fallback: `~/.pybitcask`
+
+#### Configuration File Locations
+- macOS: `~/Library/Preferences/pybitcask/config.json`
+- Linux: `~/.config/pybitcask/config.json`
+- Windows: `%APPDATA%\pybitcask\config.json`
+- Fallback: `~/.pybitcask/config.json`
 
 ### Commands
 
@@ -106,11 +122,40 @@ The CLI supports two modes:
    ```bash
    pbc server start --port 8000
    ```
+   The server will:
+   - Use the configured data directory
+   - Inherit debug mode settings
+   - Start on the specified port (default: 8000)
+   - Show the server URL when started
 
 2. **Stop the server**
    ```bash
    pbc server stop
    ```
+   This will:
+   - Attempt graceful shutdown
+   - Force stop if graceful shutdown fails
+   - Clean up server resources
+
+#### Configuration Management
+
+1. **View current configuration**
+   ```bash
+   pbc config view
+   ```
+   Shows:
+   - Current data directory
+   - Debug mode status
+   - Other configuration settings
+
+2. **Reset configuration**
+   ```bash
+   pbc config reset
+   ```
+   This will:
+   - Reset all settings to defaults
+   - Use platform-specific default paths
+   - Clear custom configurations
 
 ## Examples
 
@@ -133,36 +178,41 @@ pbc list
 pbc delete age
 ```
 
-### Switching Modes
+### Using Server
 
 ```bash
-# Start in normal mode (default)
-pbc put key1 "value1"
+# Start server on default port
+pbc server start
 
-# Switch to debug mode
-pbc mode debug
+# Start server on custom port
+pbc server start --port 9000
 
-# Store data in debug mode (human-readable)
-pbc put key2 "value2"
-
-# Check current mode
-pbc mode show
-
-# Switch back to normal mode
-pbc mode normal
+# Stop server
+pbc server stop
 ```
 
-### Using Different Data Directory
+### Configuration Examples
 
 ```bash
-# Use a custom data directory
+# Use custom data directory
 pbc --data-dir /path/to/data put key "value"
+
+# Run in debug mode
+pbc --debug put key "value"
+
+# View current configuration
+pbc config view
+
+# Reset to defaults
+pbc config reset
 ```
 
 ## Notes
 
-- Switching modes will delete all existing data
-- The mode setting is persisted between sessions
-- Data is stored in the specified data directory
+- Configuration is persisted between sessions
+- Server uses the same configuration as CLI
 - Debug mode is useful for development and debugging
 - Normal mode is recommended for production use
+- Data is stored in the configured data directory
+- Server supports graceful shutdown
+- Configuration follows platform-specific conventions

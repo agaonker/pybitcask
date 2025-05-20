@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .config import config
 from .formats import (
     DataFormat,
     JsonFormat,
@@ -35,21 +36,24 @@ class Bitcask:
 
     def __init__(
         self,
-        directory: str,
-        debug_mode: bool = False,
+        directory: Optional[str] = None,
+        debug_mode: Optional[bool] = None,
     ):
         """Initialize a new Bitcask instance.
 
         Args:
         ----
             directory: The directory where data files will be stored.
+                      If None, uses the configured default directory.
             debug_mode: If True, writes data in human-readable format.
+                       If None, uses the configured debug mode.
 
         """
-        self.data_dir = Path(directory)
-        self.data_dir.mkdir(exist_ok=True)
-        self.debug_mode = debug_mode
-        self.format: DataFormat = JsonFormat() if debug_mode else ProtoFormat()
+        self.data_dir = config.get_data_dir(directory)
+        self.debug_mode = (
+            debug_mode if debug_mode is not None else config.get_debug_mode()
+        )
+        self.format: DataFormat = JsonFormat() if self.debug_mode else ProtoFormat()
         logger.debug("Initialized with format: %s", self.format.__class__.__name__)
 
         # In-memory index: key -> (file_id, value_size, value_pos, timestamp)
@@ -64,6 +68,16 @@ class Bitcask:
 
         # Lock for thread safety
         self._lock = threading.Lock()
+
+        # Create data directory if it doesn't exist
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.error("Permission denied creating data directory: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Error creating data directory: %s", e)
+            raise
 
         # Initialize or recover from existing data
         self._initialize()
