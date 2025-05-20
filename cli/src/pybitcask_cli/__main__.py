@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import pkg_resources
 
 from pybitcask.bitcask import Bitcask
 from pybitcask.config import config as bitcask_config
@@ -20,6 +21,22 @@ from pybitcask.config import config as bitcask_config
 # Add the project root to Python path
 project_root = dirname(dirname(dirname(dirname(abspath(__file__)))))
 sys.path.append(project_root)
+
+# Version compatibility check
+try:
+    cli_version = pkg_resources.get_distribution("pybitcask-cli").version
+    core_version = pkg_resources.get_distribution("pybitcask").version
+    if cli_version != core_version:
+        click.echo(
+            click.style(
+                "Warning: CLI version ({}) differs from core version ({})".format(
+                    cli_version, core_version
+                ),
+                fg="yellow",
+            )
+        )
+except pkg_resources.DistributionNotFound:
+    pass  # Skip version check if not installed as package
 
 
 class BitcaskCLI:
@@ -209,12 +226,24 @@ class BitcaskCLI:
                 "--debug" if self.debug_mode else "",
             ]
 
+            # Register signal handlers for graceful shutdown
+            def signal_handler(signum, frame):
+                click.echo(click.style("\nShutting down server...", fg="yellow"))
+                self.stop_server()
+                sys.exit(0)
+
+            import signal
+
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
+
             self.server_process = subprocess.Popen(cmd, cwd=cwd)
             atexit.register(self.stop_server)
             self.server_url = f"http://localhost:{port}"
 
             click.echo(click.style("✓ Server started successfully", fg="green"))
             click.echo(click.style(f"Server URL: {self.server_url}", fg="blue"))
+            click.echo(click.style("Press Ctrl+C to stop the server", fg="yellow"))
         except Exception as e:
             msg = f"✗ Error starting server: {e}"
             click.echo(click.style(msg, fg="red"), err=True)
