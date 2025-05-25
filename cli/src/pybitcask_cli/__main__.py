@@ -194,12 +194,14 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def start_server(self, port: int = 8000) -> None:
-        """Start the Bitcask server.
-
+        """
+        Starts the Bitcask server as a subprocess on the specified port.
+        
+        Initializes the server using the current configuration, sets up signal handlers for
+        graceful shutdown, and displays server status and URL information in the CLI.
+        
         Args:
-        ----
-            port: The port number to run the server on
-
+            port: The port number on which to run the server (default is 8000).
         """
         try:
             msg = f"Starting Bitcask server on port {port}..."
@@ -228,6 +230,11 @@ class BitcaskCLI:
 
             # Register signal handlers for graceful shutdown
             def signal_handler(signum, frame):
+                """
+                Handles termination signals to gracefully shut down the server process.
+                
+                This function outputs a shutdown message, stops the running server, and exits the program when a termination signal is received.
+                """
                 click.echo(click.style("\nShutting down server...", fg="yellow"))
                 self.stop_server()
                 sys.exit(0)
