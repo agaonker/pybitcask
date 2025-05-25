@@ -71,9 +71,11 @@ class BitcaskCLI:
     def ensure_db(self) -> None:
         """Ensure the database connection is established."""
         if self.db is None:
+            # Always use the current configuration for debug mode
+            current_debug_mode = bitcask_config.get_debug_mode()
             self.db = Bitcask(
                 str(self.data_dir),
-                debug_mode=self.debug_mode,
+                debug_mode=current_debug_mode,
             )
             atexit.register(self.close)
 
@@ -84,7 +86,9 @@ class BitcaskCLI:
 
     def get_current_mode(self) -> str:
         """Get the current mode as a string."""
-        return "debug" if self.debug_mode else "normal"
+        # Always read from the current configuration to get the latest mode
+        current_debug_mode = bitcask_config.get_debug_mode()
+        return "debug" if current_debug_mode else "normal"
 
     def show_mode(self) -> None:
         """Show the current mode."""
@@ -184,9 +188,9 @@ class BitcaskCLI:
                 self.data_dir.mkdir(exist_ok=True)
 
             # Switch mode and create new database
-            self.debug_mode = debug_mode
-            bitcask_config.set_debug_mode(debug_mode)  # Update global config
-            self.db = Bitcask(str(self.data_dir), debug_mode=self.debug_mode)
+            bitcask_config.set_debug_mode(debug_mode)  # Update global config first
+            self.debug_mode = debug_mode  # Update CLI object's mode
+            self.db = Bitcask(str(self.data_dir), debug_mode=debug_mode)
 
             click.echo(click.style(f"✓ Switched to {mode} mode", fg="green"))
             click.echo(click.style("✓ Database cleared completely", fg="green"))
