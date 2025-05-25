@@ -1,6 +1,24 @@
 # PyBitcask CLI (pbc)
 
-A command-line interface for the PyBitcask key-value store, providing an easy way to interact with your data.
+A command-line interface for the PyBitcask key-value store, providing comprehensive management capabilities including data operations, mode switching, and configuration management.
+
+## Overview
+
+PyBitcask provides two interfaces for interacting with your data:
+
+### 🖥️ **CLI Mode (Full Features)**
+- ✅ **CRUD Operations**: Put, Get, Delete, List, Clear
+- ✅ **Mode Management**: Switch between debug/normal modes
+- ✅ **Configuration**: View and manage settings
+- ✅ **Server Control**: Start/stop the REST API server
+
+### 🌐 **Server Mode (CRUD Only)**
+- ✅ **CRUD Operations**: REST API for data operations
+- ❌ **Mode Management**: Use CLI for mode switching
+- ❌ **Configuration**: Use CLI for configuration changes
+- ❌ **Server Control**: Use CLI to manage server lifecycle
+
+> **Note**: Mode management, configuration changes, and server lifecycle management are **CLI-exclusive features**. The server provides only data operations via REST API.
 
 ## Installation
 
@@ -9,9 +27,9 @@ A command-line interface for the PyBitcask key-value store, providing an easy wa
 pip install -e cli
 ```
 
-## Usage
+## CLI Usage
 
-The CLI provides several commands for managing your key-value store. The basic syntax is:
+The CLI provides full control over your PyBitcask instance. The basic syntax is:
 
 ```bash
 pbc [OPTIONS] COMMAND [ARGS]...
@@ -38,9 +56,9 @@ PyBitcask uses a configuration system that follows platform-specific conventions
 - Windows: `%APPDATA%\pybitcask\config.json`
 - Fallback: `~/.pybitcask/config.json`
 
-### Commands
+### CLI Commands
 
-#### Data Operations
+#### Data Operations (Available in both CLI and Server)
 
 1. **Store a value**
    ```bash
@@ -79,11 +97,13 @@ PyBitcask uses a configuration system that follows platform-specific conventions
    pbc clear
    ```
 
-#### Mode Management
+#### Mode Management (CLI Only)
 
-The CLI supports two modes:
-- **Normal mode**: Uses proto format for efficient storage
+The CLI supports two storage modes:
+- **Normal mode**: Uses protobuf format for efficient storage
 - **Debug mode**: Uses human-readable JSON format
+
+> ⚠️ **Important**: Mode switching is only available through the CLI. The server inherits the current mode but cannot change it.
 
 1. **Switch to debug mode**
    ```bash
@@ -112,7 +132,9 @@ The CLI supports two modes:
    pbc mode show
    ```
 
-#### Server Operations
+#### Server Operations (CLI Only)
+
+> 📡 **Server Management**: Starting, stopping, and managing the server is only available through the CLI.
 
 1. **Start the server**
    ```bash
@@ -124,9 +146,9 @@ The CLI supports two modes:
    ```
    The server will:
    - Use the configured data directory
-   - Inherit debug mode settings
+   - Inherit current debug mode settings
    - Start on the specified port (default: 8000)
-   - Show the server URL when started
+   - Provide REST API for CRUD operations only
 
 2. **Stop the server**
    ```bash
@@ -137,7 +159,9 @@ The CLI supports two modes:
    - Force stop if graceful shutdown fails
    - Clean up server resources
 
-#### Configuration Management
+#### Configuration Management (CLI Only)
+
+> ⚙️ **Configuration**: Viewing and modifying configuration is only available through the CLI.
 
 1. **View current configuration**
    ```bash
@@ -157,9 +181,46 @@ The CLI supports two modes:
    - Use platform-specific default paths
    - Clear custom configurations
 
+## Server API
+
+When the server is running, it provides a REST API for data operations only:
+
+### Available Endpoints
+
+| Method | Endpoint | Description | Request Body |
+|--------|----------|-------------|--------------|
+| `GET` | `/` | Server status | - |
+| `POST` | `/put` | Store key-value pair | `{"key": "string", "value": "any"}` |
+| `GET` | `/get/{key}` | Retrieve value | - |
+| `DELETE` | `/delete/{key}` | Delete key | - |
+| `GET` | `/keys` | List all keys | - |
+| `POST` | `/clear` | Clear all data | - |
+| `POST` | `/batch` | Batch operations | `{"data": {"key1": "value1", ...}}` |
+| `GET` | `/health` | Health check | - |
+
+### Server API Examples
+
+```bash
+# Start the server (CLI only)
+pbc server start --port 8000
+
+# Use the REST API
+curl -X POST "http://localhost:8000/put" \
+     -H "Content-Type: application/json" \
+     -d '{"key": "name", "value": "John Doe"}'
+
+curl "http://localhost:8000/get/name"
+
+curl -X DELETE "http://localhost:8000/delete/name"
+
+curl "http://localhost:8000/keys"
+```
+
+> **Note**: Mode switching, configuration changes, and server management are not available through the REST API. Use the CLI for these operations.
+
 ## Examples
 
-### Basic Usage
+### CLI Examples
 
 ```bash
 # Store some data
@@ -176,22 +237,31 @@ pbc list
 
 # Delete a key
 pbc delete age
+
+# Switch to debug mode (CLI only)
+pbc mode debug
+
+# Start server (CLI only)
+pbc server start --port 8000
 ```
 
-### Using Server
+### Server API Examples
 
 ```bash
-# Start server on default port
-pbc server start
+# First, start the server using CLI
+pbc server start --port 8000
 
-# Start server on custom port
-pbc server start --port 9000
+# Then use REST API for data operations
+curl -X POST "http://localhost:8000/put" \
+     -H "Content-Type: application/json" \
+     -d '{"key": "user", "value": "Alice"}'
 
-# Stop server
-pbc server stop
+curl "http://localhost:8000/get/user"
+
+curl "http://localhost:8000/keys"
 ```
 
-### Configuration Examples
+### Configuration Examples (CLI Only)
 
 ```bash
 # Use custom data directory
@@ -207,12 +277,47 @@ pbc config view
 pbc config reset
 ```
 
+## Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   CLI Client    │    │  REST Client    │
+│                 │    │                 │
+│ • CRUD Ops      │    │ • CRUD Ops      │
+│ • Mode Mgmt     │    │   (API only)    │
+│ • Config Mgmt   │    │                 │
+│ • Server Ctrl   │    │                 │
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │                      │ HTTP
+          │ Direct               │
+          │                      │
+          └──────┬───────────────┘
+                 │
+         ┌───────▼────────┐
+         │  PyBitcask     │
+         │  Database      │
+         │                │
+         │ • Data Storage │
+         │ • Indexing     │
+         │ • Persistence  │
+         └────────────────┘
+```
+
 ## Notes
 
-- Configuration is persisted between sessions
-- Server uses the same configuration as CLI
-- Debug mode is useful for development and debugging
-- Normal mode is recommended for production use
-- Data is stored in the configured data directory
-- Server supports graceful shutdown
-- Configuration follows platform-specific conventions
+- **CLI**: Full-featured interface with all capabilities
+- **Server**: REST API for data operations only
+- **Mode Management**: CLI exclusive - server inherits current mode
+- **Configuration**: CLI exclusive - server uses current configuration
+- **Server Control**: CLI exclusive - start/stop server via CLI commands
+- **Data Operations**: Available in both CLI and server modes
+- **Debug Mode**: Useful for development and debugging (JSON format)
+- **Normal Mode**: Recommended for production use (protobuf format)
+
+## Security Considerations
+
+- The server provides no authentication by default
+- Mode switching and configuration changes require CLI access
+- Consider running the server behind a reverse proxy in production
+- Restrict CLI access to authorized users for configuration management
