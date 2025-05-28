@@ -19,6 +19,8 @@ The PyBitcask server provides a **data-only REST API** for performing CRUD opera
 - ❌ **Mode Switching**: Change between debug/normal modes
 - ❌ **Configuration**: Modify settings
 - ❌ **Server Management**: Start/stop server
+- ❌ **Database Compaction**: Reclaim space from deleted/updated records
+- ❌ **Administrative Tasks**: Maintenance and optimization operations
 
 ## Starting the Server
 
@@ -411,6 +413,72 @@ func main() {
     fmt.Println("Data stored successfully")
 }
 ```
+
+---
+
+## Administrative Operations
+
+**Important**: Administrative operations are **NOT available via REST API** for security and operational safety. These operations must be performed using the PyBitcask CLI.
+
+### Database Compaction
+Compaction reclaims disk space by removing deleted and outdated records:
+
+```bash
+# Check compaction statistics
+pbc compact stats
+
+# Run compaction (with threshold check)
+pbc compact run
+
+# Force compaction regardless of threshold
+pbc compact run --force
+
+# Set custom threshold (30% dead data)
+pbc compact run --threshold 0.3
+```
+
+### Mode Management
+Switch between data formats:
+
+```bash
+# Show current mode
+pbc mode show
+
+# Switch to debug mode (JSON format)
+pbc mode debug
+
+# Switch to normal mode (Protocol Buffers)
+pbc mode normal
+```
+
+### Configuration Management
+Manage database settings:
+
+```bash
+# View current configuration
+pbc config view
+
+# Reset to defaults
+pbc config reset
+```
+
+### Server Management
+Control server lifecycle:
+
+```bash
+# Start server
+pbc server start --port 8000
+
+# Stop server
+pbc server stop
+```
+
+**Rationale**: These operations are CLI-only because they:
+- Require administrative privileges
+- Can affect server availability
+- May cause data loss (mode switching)
+- Should be performed by database administrators
+- Need proper confirmation prompts
 
 ---
 
