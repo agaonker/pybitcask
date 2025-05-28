@@ -39,15 +39,14 @@ class Bitcask:
         directory: Optional[str] = None,
         debug_mode: Optional[bool] = None,
     ):
-        """Initialize a new Bitcask instance.
-
+        """
+        Initializes a Bitcask key-value store instance with the specified data directory and debug mode.
+        
+        Creates the data directory if it does not exist, sets up the data encoding format, initializes in-memory structures, and recovers or creates data files as needed.
+        
         Args:
-        ----
-            directory: The directory where data files will be stored.
-                      If None, uses the configured default directory.
-            debug_mode: If True, writes data in human-readable format.
-                       If None, uses the configured debug mode.
-
+            directory: Directory for storing data files. If None, uses the default from configuration.
+            debug_mode: If True, uses a human-readable data format; if None, uses the configured default.
         """
         self.data_dir = config.get_data_dir(directory)
         self.debug_mode = (
@@ -378,7 +377,11 @@ class Bitcask:
             logger.debug("Closed database")
 
     def clear(self) -> None:
-        """Delete all data and start fresh."""
+        """
+        Deletes all data files and resets the database to an empty state.
+        
+        Closes any open data files, removes all data files from the data directory, clears the in-memory index, resets the file counter, and creates a new empty data file.
+        """
         with self._lock:
             # Close any open files
             if self.active_file:
@@ -398,17 +401,16 @@ class Bitcask:
             logger.debug("Database cleared and reset")
 
     def get_compaction_stats(self) -> Dict[str, Any]:
-        """Get statistics about the database for compaction decisions.
-
-        Returns
-        -------
-            Dict containing:
-            - total_files: Number of data files
-            - total_size: Total size of all data files in bytes
-            - live_keys: Number of live keys in index
-            - estimated_live_size: Estimated size of live data
-            - estimated_dead_ratio: Ratio of dead/stale data (0.0 to 1.0)
-
+        """
+        Returns statistics relevant to database compaction, including file count, total size, live key count, estimated live data size, and the ratio of dead (stale) data.
+        
+        Returns:
+            A dictionary with the following keys:
+                - total_files: Number of data files.
+                - total_size: Total size of all data files in bytes.
+                - live_keys: Number of live keys currently in the index.
+                - estimated_live_size: Estimated size in bytes of live data.
+                - estimated_dead_ratio: Estimated fraction of dead (stale) data, as a float between 0.0 and 1.0.
         """
         data_files = list(self.data_dir.glob("data_*.db"))
         total_size = sum(f.stat().st_size for f in data_files)
@@ -437,16 +439,18 @@ class Bitcask:
         }
 
     def should_compact(self, threshold_ratio: float = 0.3) -> bool:
-        """Check if compaction should be performed.
-
+        """
+        Determines whether database compaction is recommended based on dead data ratio.
+        
+        Compaction is suggested if the estimated ratio of dead (stale) data meets or exceeds
+        the specified threshold, the total data size is at least 1MB, and there are at least
+        two data files.
+        
         Args:
-        ----
-            threshold_ratio: Minimum ratio of dead data to trigger compaction
-
+            threshold_ratio: The minimum ratio of dead data required to trigger compaction.
+        
         Returns:
-        -------
-            True if compaction is recommended
-
+            True if compaction is recommended; otherwise, False.
         """
         stats = self.get_compaction_stats()
 
@@ -463,23 +467,20 @@ class Bitcask:
     def compact(
         self, threshold_ratio: float = 0.3, force: bool = False
     ) -> Dict[str, Any]:
-        """Compact the database by removing dead/stale data.
-
-        This operation:
-        1. Checks if compaction is needed (unless forced)
-        2. Creates a new data file with only live records
-        3. Updates the index to point to the new file
-        4. Removes old data files
-
+        """
+        Performs database compaction by rewriting only live records to a new data file and removing obsolete files.
+        
+        If not forced, compaction occurs only when the ratio of dead (stale) data exceeds the specified threshold. The method rewrites all current key-value pairs to a new data file, updates the in-memory index, and deletes all previous data files. Returns detailed statistics about the compaction process, including records written, space saved, and before/after metrics.
+        
         Args:
-        ----
-            threshold_ratio: Minimum ratio of dead data to trigger compaction
-            force: If True, perform compaction regardless of threshold
-
+            threshold_ratio: Minimum ratio of dead data required to trigger compaction.
+            force: If True, compaction is performed regardless of the dead data ratio.
+        
         Returns:
-        -------
-            Dict with compaction statistics
-
+            A dictionary containing compaction statistics such as whether compaction was performed, duration, records written, bytes written, files removed, space saved, and before/after stats.
+        
+        Raises:
+            RuntimeError: If compaction fails due to an error during the process.
         """
         with self._lock:
             # Get initial stats
