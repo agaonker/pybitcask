@@ -29,9 +29,8 @@ try:
     if cli_version != core_version:
         click.echo(
             click.style(
-                "Warning: CLI version ({}) differs from core version ({})".format(
-                    cli_version, core_version
-                ),
+                f"Warning: CLI version ({cli_version}) differs from "
+                f"core version ({core_version})",
                 fg="yellow",
             )
         )
@@ -155,6 +154,96 @@ class BitcaskCLI:
         except Exception as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
+    def compact_stats(self) -> None:
+        """Show compaction statistics."""
+        try:
+            self.ensure_db()
+            stats = self.db.get_compaction_stats()
+
+            click.echo(click.style("📊 Database Statistics:", fg="blue", bold=True))
+            click.echo(f"  Files: {stats['total_files']}")
+            click.echo(
+                f"  Total size: {stats['total_size']:,} bytes "
+                f"({stats['total_size'] / (1024 * 1024):.2f} MB)"
+            )
+            click.echo(f"  Live keys: {stats['live_keys']:,}")
+            click.echo(
+                f"  Estimated live size: {stats['estimated_live_size']:,} bytes "
+                f"({stats['estimated_live_size'] / (1024 * 1024):.2f} MB)"
+            )
+            click.echo(f"  Estimated dead ratio: {stats['estimated_dead_ratio']:.1%}")
+
+            # Show recommendation
+            if self.db.should_compact():
+                click.echo(
+                    click.style(
+                        "💡 Recommendation: Compaction is recommended", fg="yellow"
+                    )
+                )
+            else:
+                click.echo(
+                    click.style("✓ Recommendation: Compaction not needed", fg="green")
+                )
+
+        except Exception as e:
+            click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+
+    def compact(self, threshold: float = 0.3, force: bool = False) -> None:
+        """Compact the database to reclaim space."""
+        try:
+            self.ensure_db()
+
+            if not force:
+                # Show stats first
+                stats = self.db.get_compaction_stats()
+                click.echo(click.style("📊 Pre-compaction Statistics:", fg="blue"))
+                click.echo(
+                    f"  Total size: {stats['total_size']:,} bytes "
+                    f"({stats['total_size'] / (1024 * 1024):.2f} MB)"
+                )
+                click.echo(f"  Dead data ratio: {stats['estimated_dead_ratio']:.1%}")
+
+                if not self.db.should_compact(threshold):
+                    click.echo(
+                        click.style(
+                            "ℹ️ Compaction not needed (threshold not met)", fg="blue"
+                        )
+                    )
+                    if not click.confirm("Do you want to force compaction anyway?"):
+                        return
+                    force = True
+
+            # Perform compaction
+            click.echo(click.style("🔄 Starting compaction...", fg="yellow"))
+            result = self.db.compact(threshold_ratio=threshold, force=force)
+
+            if not result["performed"]:
+                click.echo(
+                    click.style(f"ℹ️ Compaction skipped: {result['reason']}", fg="blue")
+                )
+                return
+
+            # Show results
+            click.echo(
+                click.style(
+                    "✓ Compaction completed successfully!", fg="green", bold=True
+                )
+            )
+            click.echo(f"  Duration: {result['duration_seconds']:.2f} seconds")
+            click.echo(f"  Records written: {result['records_written']:,}")
+            click.echo(f"  Files removed: {result['files_removed']}")
+            click.echo(
+                f"  Space saved: {result['space_saved_bytes']:,} bytes "
+                f"({result['space_saved_bytes'] / (1024 * 1024):.2f} MB)"
+            )
+            click.echo(f"  Space reduction: {result['space_saved_ratio']:.1%}")
+
+            # Refresh database connection
+            self.refresh_db()
+
+        except Exception as e:
+            click.echo(click.style(f"✗ Compaction failed: {e}", fg="red"), err=True)
+
     def close(self) -> None:
         """Close the database connection."""
         if self.db is not None:
@@ -198,14 +287,16 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def start_server(self, port: int = 8000) -> None:
-        """
-        Starts the Bitcask server as a subprocess on the specified port.
-        
-        Initializes the server using the current configuration, sets up signal handlers for
-        graceful shutdown, and displays server status and URL information in the CLI.
-        
+        """Start the Bitcask server as a subprocess on the specified port.
+
+        Initialize the server using the current configuration, set up signal
+        handlers for graceful shutdown, and display server status and URL
+        information in the CLI.
+
         Args:
+        ----
             port: The port number on which to run the server (default is 8000).
+
         """
         try:
             msg = f"Starting Bitcask server on port {port}..."
@@ -234,10 +325,10 @@ class BitcaskCLI:
 
             # Register signal handlers for graceful shutdown
             def signal_handler(signum, frame):
-                """
-                Handles termination signals to gracefully shut down the server process.
-                
-                This function outputs a shutdown message, stops the running server, and exits the program when a termination signal is received.
+                """Handle termination signals to gracefully shut down the server.
+
+                Output a shutdown message, stop the running server, and exit the
+                program when a termination signal is received.
                 """
                 click.echo(click.style("\nShutting down server...", fg="yellow"))
                 self.stop_server()
@@ -329,6 +420,28 @@ def list(cli: BitcaskCLI):
 def clear(cli: BitcaskCLI):
     """Clear all data from the database."""
     cli.clear()
+
+
+@cli.group()
+def compact():
+    """Database compaction commands."""
+    pass
+
+
+@compact.command()
+@click.pass_obj
+def stats(cli: BitcaskCLI):
+    """Show database statistics and compaction recommendations."""
+    cli.compact_stats()
+
+
+@compact.command()
+@click.option("--threshold", default=0.3, help="Dead data ratio threshold (0.0-1.0)")
+@click.option("--force", is_flag=True, help="Force compaction regardless of threshold")
+@click.pass_obj
+def run(cli: BitcaskCLI, threshold: float, force: bool):
+    """Compact the database to reclaim space from deleted/updated records."""
+    cli.compact(threshold=threshold, force=force)
 
 
 @cli.group()
