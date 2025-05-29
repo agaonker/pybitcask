@@ -454,8 +454,11 @@ class Bitcask:
         if stats["total_size"] < 1024 * 1024:  # Less than 1MB
             return False
 
-        # Don't compact if there are too few files
-        if stats["total_files"] < 2:
+        # Don't compact if there's only one small file
+        # Allow compaction of single files if they're large (>10MB) and have dead data
+        if (
+            stats["total_files"] < 2 and stats["total_size"] < 10 * 1024 * 1024
+        ):  # Less than 10MB
             return False
 
         return stats["estimated_dead_ratio"] >= threshold_ratio
