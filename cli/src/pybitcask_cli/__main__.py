@@ -145,7 +145,11 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def clear(self) -> None:
-        """Clear all data from the database."""
+        """
+        Removes all key-value data from the database.
+        
+        All records are permanently deleted. Displays a success or error message to the user.
+        """
         try:
             self.ensure_db()
             self.db.clear()
@@ -155,7 +159,11 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def compact_stats(self) -> None:
-        """Show compaction statistics."""
+        """
+        Displays database compaction statistics and provides a recommendation on whether compaction is advised.
+        
+        Shows information such as the number of files, total size, live keys, estimated live data size, and dead data ratio. Outputs a recommendation based on the current compaction threshold.
+        """
         try:
             self.ensure_db()
             stats = self.db.get_compaction_stats()
@@ -189,7 +197,15 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def compact(self, threshold: float = 0.3, force: bool = False) -> None:
-        """Compact the database to reclaim space."""
+        """
+        Performs database compaction to reclaim disk space by removing obsolete data.
+        
+        If the dead data ratio does not meet the specified threshold and force is not set,
+        the user is prompted to confirm compaction. Displays pre-compaction statistics,
+        executes compaction, and reports results including duration, records written,
+        files removed, and space saved. The database connection is refreshed after
+        compaction. Errors are reported to the user.
+        """
         try:
             self.ensure_db()
 
@@ -245,13 +261,19 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Compaction failed: {e}", fg="red"), err=True)
 
     def close(self) -> None:
-        """Close the database connection."""
+        """
+        Closes the database connection if it is open.
+        """
         if self.db is not None:
             self.db.close()
             self.db = None
 
     def switch_mode(self, debug_mode: bool) -> None:
-        """Switch between debug and normal modes."""
+        """
+        Switches between debug and normal modes, deleting all existing data.
+        
+        Prompts the user for confirmation before switching modes, as this operation irreversibly deletes all data files in the current data directory. Updates the configuration and reinitializes the database in the selected mode.
+        """
         try:
             # Show warning and get confirmation
             mode = "debug" if debug_mode else "normal"
@@ -287,16 +309,13 @@ class BitcaskCLI:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
 
     def start_server(self, port: int = 8000) -> None:
-        """Start the Bitcask server as a subprocess on the specified port.
-
-        Initialize the server using the current configuration, set up signal
-        handlers for graceful shutdown, and display server status and URL
-        information in the CLI.
-
+        """
+        Starts the Bitcask server as a subprocess on the specified port.
+        
+        Initializes the server using the current configuration, sets up signal handlers for graceful shutdown, and displays server status and access URL in the CLI.
+        
         Args:
-        ----
             port: The port number on which to run the server (default is 8000).
-
         """
         try:
             msg = f"Starting Bitcask server on port {port}..."
@@ -325,10 +344,10 @@ class BitcaskCLI:
 
             # Register signal handlers for graceful shutdown
             def signal_handler(signum, frame):
-                """Handle termination signals to gracefully shut down the server.
-
-                Output a shutdown message, stop the running server, and exit the
-                program when a termination signal is received.
+                """
+                Handles termination signals to gracefully shut down the server.
+                
+                Outputs a shutdown message, stops the running server, and exits the program when a termination signal is received.
                 """
                 click.echo(click.style("\nShutting down server...", fg="yellow"))
                 self.stop_server()
@@ -418,20 +437,28 @@ def list(cli: BitcaskCLI):
 @cli.command()
 @click.pass_obj
 def clear(cli: BitcaskCLI):
-    """Clear all data from the database."""
+    """
+    Removes all data from the Bitcask database.
+    
+    This command deletes every key-value pair, leaving the database empty.
+    """
     cli.clear()
 
 
 @cli.group()
 def compact():
-    """Database compaction commands."""
+    """
+    Provides commands for viewing compaction statistics and running database compaction.
+    """
     pass
 
 
 @compact.command()
 @click.pass_obj
 def stats(cli: BitcaskCLI):
-    """Show database statistics and compaction recommendations."""
+    """
+    Displays database compaction statistics and provides recommendations on whether compaction is advised.
+    """
     cli.compact_stats()
 
 
@@ -440,13 +467,21 @@ def stats(cli: BitcaskCLI):
 @click.option("--force", is_flag=True, help="Force compaction regardless of threshold")
 @click.pass_obj
 def run(cli: BitcaskCLI, threshold: float, force: bool):
-    """Compact the database to reclaim space from deleted/updated records."""
+    """
+    Runs database compaction to reclaim space from obsolete records.
+    
+    Args:
+        threshold: The minimum dead data ratio required to trigger compaction without confirmation.
+        force: If True, compaction runs regardless of the dead data ratio.
+    """
     cli.compact(threshold=threshold, force=force)
 
 
 @cli.group()
 def mode():
-    """Switch between debug and normal modes."""
+    """
+    Provides a command group for switching between debug and normal modes in the CLI.
+    """
     pass
 
 
