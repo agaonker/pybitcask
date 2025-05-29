@@ -509,6 +509,10 @@ class Bitcask:
 
             start_time = time.time()
 
+            # Create a copy of the index to work with during compaction
+            # This ensures the original index remains consistent if compaction fails
+            new_index = self.index.copy()
+
             # Close active file
             if self.active_file:
                 self.active_file.close()
@@ -550,8 +554,8 @@ class Bitcask:
                         record_pos = compacted_file.tell()
                         compacted_file.write(record)
 
-                        # Update index to point to new location
-                        self.index[key] = {
+                        # Update the new index copy to point to new location
+                        new_index[key] = {
                             "file_id": compacted_file_id,
                             "value_size": entry["value_size"],
                             "value_pos": record_pos,
@@ -583,6 +587,9 @@ class Bitcask:
                         logger.error(
                             "Failed to remove old data file %s: %s", old_file, e
                         )
+
+                # Only after everything succeeds, swap the index
+                self.index = new_index
 
                 # Calculate final stats
                 final_stats = self.get_compaction_stats()
