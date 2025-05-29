@@ -532,42 +532,87 @@ class Bitcask:
             bytes_written = 0
 
             try:
-                with open(compacted_file_path, "wb") as compacted_file:
-                    # Write format identifier
-                    identifier = self.format.get_format_identifier()
-                    compacted_file.write(identifier)
-                    bytes_written += len(identifier)
+                # Cache open file handles to avoid repeated file operations
+                file_cache = {}
+                format_cache = {}
 
-                    # Write all live records in key order for better locality
-                    for key in sorted(self.index.keys()):
-                        entry = self.index[key]
+                try:
+                    with open(compacted_file_path, "wb") as compacted_file:
+                        # Write format identifier
+                        identifier = self.format.get_format_identifier()
+                        compacted_file.write(identifier)
+                        bytes_written += len(identifier)
 
-                        # Read the current value
-                        value = self.get(key)
-                        if value is None:
-                            # Key was deleted or corrupted, skip it
-                            continue
+                        # Write all live records in key order for better locality
+                        for key in sorted(self.index.keys()):
+                            entry = self.index[key]
+                            file_id = entry["file_id"]
 
-                        # Encode and write the record
-                        timestamp = entry["timestamp"]
-                        record = self.format.encode_record(key, value, timestamp)
-                        record_pos = compacted_file.tell()
-                        compacted_file.write(record)
+                            # Get or create cached file handle and format
+                            if file_id not in file_cache:
+                                file_path = self.data_dir / f"data_{file_id}.db"
+                                if not file_path.exists():
+                                    logger.warning("Data file not found: %s", file_path)
+                                    continue
 
-                        # Update the new index copy to point to new location
-                        new_index[key] = {
-                            "file_id": compacted_file_id,
-                            "value_size": entry["value_size"],
-                            "value_pos": record_pos,
-                            "timestamp": timestamp,
-                        }
+                                file_cache[file_id] = open(file_path, "rb")
+                                format_cache[file_id] = self._detect_format(file_path)
 
-                        records_written += 1
-                        bytes_written += len(record)
+                            file_handle = file_cache[file_id]
+                            file_format = format_cache[file_id]
 
-                    # Ensure all data is written
-                    compacted_file.flush()
-                    os.fsync(compacted_file.fileno())
+                            # Read the current value directly from file
+                            try:
+                                # Seek to value position
+                                file_handle.seek(entry["value_pos"])
+
+                                # Read the record using the appropriate format
+                                record_key, value, record_timestamp, _, is_tombstone = (
+                                    file_format.read_record(file_handle)
+                                )
+
+                                if is_tombstone or value is None or record_key != key:
+                                    # Key was deleted, corrupted, or mismatched, skip it
+                                    continue
+
+                                # Encode and write the record
+                                timestamp = entry["timestamp"]
+                                record = self.format.encode_record(
+                                    key, value, timestamp
+                                )
+                                record_pos = compacted_file.tell()
+                                compacted_file.write(record)
+
+                                # Update the new index copy to point to new location
+                                new_index[key] = {
+                                    "file_id": compacted_file_id,
+                                    "value_size": entry["value_size"],
+                                    "value_pos": record_pos,
+                                    "timestamp": timestamp,
+                                }
+
+                                records_written += 1
+                                bytes_written += len(record)
+
+                            except Exception as read_error:
+                                logger.warning(
+                                    "Failed to read key %s: %s", key, read_error
+                                )
+                                continue
+
+                        # Ensure all data is written
+                        compacted_file.flush()
+                        os.fsync(compacted_file.fileno())
+
+                finally:
+                    # Close all cached file handles
+                    for file_handle in file_cache.values():
+                        try:
+                            file_handle.close()
+                        except Exception as close_error:
+                            logger.warning(
+                                "Failed to close file handle: %s", close_error
+                            )
 
                 # Update active file to the compacted file
                 self.active_file_id = compacted_file_id
