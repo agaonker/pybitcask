@@ -2,7 +2,7 @@
 """Test script to demonstrate PyBitcask compaction functionality."""
 
 import time
-from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from pybitcask import Bitcask
 
@@ -33,13 +33,10 @@ def main():
     print("🧪 PyBitcask Compaction Demo")
     print("=" * 50)
 
-    # Use a temporary directory for testing
-    test_dir = Path("test_compaction_data")
-    test_dir.mkdir(exist_ok=True)
-
-    try:
+    # Use TemporaryDirectory for automatic cleanup, even on abrupt exits
+    with TemporaryDirectory(prefix="pbc_compaction_") as temp_dir:
         # Initialize database in debug mode for easier inspection
-        db = Bitcask(str(test_dir), debug_mode=True)
+        db = Bitcask(temp_dir, debug_mode=True)
 
         print("\n1️⃣ Creating initial dataset...")
         # Add initial data
@@ -139,16 +136,7 @@ def main():
 
         db.close()
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise
-    finally:
-        # Clean up test directory
-        import shutil
-
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-            print(f"\n🧹 Cleaned up test directory: {test_dir}")
+        print(f"\n🧹 Cleaned up test directory: {temp_dir}")
 
     print("\n✅ Compaction demo completed successfully!")
 
