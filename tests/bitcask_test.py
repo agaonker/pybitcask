@@ -7,7 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pybitcask import Bitcask, EntryCountRotation, SizeBasedRotation
+from pybitcask import (
+    Bitcask,
+    CompactionScheduler,
+    EntryCountRotation,
+    SizeBasedRotation,
+)
 
 # Disable all logging before importing Bitcask
 logging.disable(logging.CRITICAL)
@@ -313,6 +318,31 @@ class TestAutoCompaction(unittest.TestCase):
 
         self.assertEqual(scheduler.interval_seconds, 20.0)
         self.assertEqual(scheduler.threshold_ratio, 0.7)
+
+        db.close()
+
+    def test_scheduler_validation(self):
+        """Test that scheduler validates parameters on initialization."""
+        db = Bitcask(str(self.test_dir))
+
+        # Invalid interval_seconds (must be positive)
+        with self.assertRaises(ValueError):
+            CompactionScheduler(db, interval_seconds=0)
+
+        with self.assertRaises(ValueError):
+            CompactionScheduler(db, interval_seconds=-1.0)
+
+        # Invalid threshold_ratio (must be between 0.0 and 1.0)
+        with self.assertRaises(ValueError):
+            CompactionScheduler(db, threshold_ratio=-0.1)
+
+        with self.assertRaises(ValueError):
+            CompactionScheduler(db, threshold_ratio=1.5)
+
+        # Valid parameters should work
+        scheduler = CompactionScheduler(db, interval_seconds=1.0, threshold_ratio=0.5)
+        self.assertEqual(scheduler.interval_seconds, 1.0)
+        self.assertEqual(scheduler.threshold_ratio, 0.5)
 
         db.close()
 

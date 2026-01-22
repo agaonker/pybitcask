@@ -53,9 +53,13 @@ class CompactionScheduler:
 
         """
         self._bitcask = bitcask
-        self._interval_seconds = interval_seconds
-        self._threshold_ratio = threshold_ratio
         self._on_compaction_complete = on_compaction_complete
+
+        # Initialize with defaults, then use setters for validation
+        self._interval_seconds = 300.0
+        self._threshold_ratio = 0.3
+        self.interval_seconds = interval_seconds
+        self.threshold_ratio = threshold_ratio
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
