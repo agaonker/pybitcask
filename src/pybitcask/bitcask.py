@@ -1,14 +1,17 @@
 """Implementation of the Bitcask key-value store."""
 
 # -*- coding: utf-8 -*-
+import json
 import logging
-import mmap
 import os
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import IO, TYPE_CHECKING, Any, Callable, Dict, Optional
+
+if TYPE_CHECKING:
+    from .scheduler import CompactionScheduler
 
 from .config import config
 from .formats import (
@@ -17,6 +20,7 @@ from .formats import (
     ProtoFormat,
     get_format_by_identifier,
 )
+from .rotation import RotationStrategy
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
@@ -38,6 +42,7 @@ class Bitcask:
         self,
         directory: Optional[str] = None,
         debug_mode: Optional[bool] = None,
+        rotation_strategy: Optional[RotationStrategy] = None,
     ):
         """Initialize a new Bitcask instance.
 
@@ -47,6 +52,8 @@ class Bitcask:
                       If None, uses the configured default directory.
             debug_mode: If True, writes data in human-readable format.
                        If None, uses the configured debug mode.
+            rotation_strategy: Strategy for rotating data files.
+                              If None, files are not automatically rotated.
 
         """
         self.data_dir = config.get_data_dir(directory)
@@ -54,13 +61,14 @@ class Bitcask:
             debug_mode if debug_mode is not None else config.get_debug_mode()
         )
         self.format: DataFormat = JsonFormat() if self.debug_mode else ProtoFormat()
+        self.rotation_strategy = rotation_strategy
         logger.debug("Initialized with format: %s", self.format.__class__.__name__)
 
         # In-memory index: key -> (file_id, value_size, value_pos, timestamp)
         self.index: Dict[str, dict] = {}
 
         # Current active file for writing
-        self.active_file: Optional[mmap.mmap] = None
+        self.active_file: Optional[IO[bytes]] = None
         self.active_file_id: int = 0
         self.active_file_path: Optional[Path] = None
         self.active_file_entry_count: int = 0
@@ -68,6 +76,9 @@ class Bitcask:
 
         # Lock for thread safety
         self._lock = threading.RLock()
+
+        # Compaction scheduler (initialized when start_auto_compaction is called)
+        self._compaction_scheduler: Optional["CompactionScheduler"] = None
 
         # Create data directory if it doesn't exist
         try:
@@ -126,6 +137,37 @@ class Bitcask:
             self.active_file_path,
             self.active_file.tell(),
         )
+
+    def _check_rotation(self) -> None:
+        """Check if the active file should be rotated based on the rotation strategy.
+
+        If a rotation strategy is configured and its conditions are met,
+        creates a new data file for subsequent writes.
+        """
+        if self.rotation_strategy is None:
+            return
+
+        if self.active_file is None or self.active_file_path is None:
+            return
+
+        # Get current file size
+        file_size = self.active_file.tell()
+
+        # Get last write time (default to now if not set)
+        last_write_time = self.active_file_last_write or datetime.now()
+
+        if self.rotation_strategy.should_rotate(
+            file_size=file_size,
+            entry_count=self.active_file_entry_count,
+            last_write_time=last_write_time,
+        ):
+            logger.info(
+                "Rotating file %s (size=%d, entries=%d)",
+                self.active_file_path,
+                file_size,
+                self.active_file_entry_count,
+            )
+            self._create_new_data_file()
 
     def _detect_format(self, data_file: Path) -> DataFormat:
         """Detect the format of a data file."""
@@ -221,7 +263,7 @@ class Bitcask:
                         ):
                             self.index[key] = {
                                 "file_id": file_id,
-                                "value_size": len(str(value).encode()),
+                                "value_size": len(json.dumps(value).encode()),
                                 "value_pos": f.tell() - record_size,
                                 "timestamp": timestamp,
                             }
@@ -258,7 +300,7 @@ class Bitcask:
             # Update index with current file info
             self.index[key] = {
                 "file_id": self.active_file_id,
-                "value_size": len(str(value).encode()),
+                "value_size": len(json.dumps(value).encode()),
                 "value_pos": record_pos,
                 "timestamp": timestamp,
             }
@@ -268,6 +310,9 @@ class Bitcask:
                 record_pos,
                 len(record),
             )
+
+            # Check if file rotation is needed
+            self._check_rotation()
 
     def get(self, key: str) -> Optional[Any]:
         """Retrieve a value by key."""
@@ -354,7 +399,7 @@ class Bitcask:
                 # Update index
                 self.index[key] = {
                     "file_id": self.active_file_id,
-                    "value_size": len(str(value).encode()),
+                    "value_size": len(json.dumps(value).encode()),
                     "value_pos": record_pos,
                     "timestamp": timestamp,
                 }
@@ -370,12 +415,97 @@ class Bitcask:
             self.active_file_entry_count += len(data)
             self.active_file_last_write = datetime.now()
 
+            # Check if file rotation is needed
+            self._check_rotation()
+
     def close(self):
-        """Close the database."""
+        """Close the database and stop any background tasks."""
+        # Stop auto-compaction if running
+        self.stop_auto_compaction()
+
         if self.active_file:
             self.active_file.close()
             self.active_file = None
             logger.debug("Closed database")
+
+    def start_auto_compaction(
+        self,
+        interval_seconds: float = 300.0,
+        threshold_ratio: float = 0.3,
+        on_compaction_complete: Optional[Callable[[dict], None]] = None,
+    ) -> "CompactionScheduler":
+        """Start automatic background compaction.
+
+        This starts a background thread that periodically checks if compaction
+        is needed and performs it automatically.
+
+        Args:
+        ----
+            interval_seconds: How often to check if compaction is needed.
+                             Default: 300 seconds (5 minutes).
+            threshold_ratio: Minimum ratio of dead data to trigger compaction.
+                            Default: 0.3 (30%).
+            on_compaction_complete: Optional callback invoked after each compaction.
+                                   Receives the compaction result dict.
+
+        Returns:
+        -------
+            The CompactionScheduler instance for additional control if needed.
+
+        Example:
+        -------
+            db = Bitcask("/data")
+            db.start_auto_compaction(interval_seconds=600, threshold_ratio=0.5)
+            # ... use database ...
+            db.close()  # Automatically stops the scheduler
+
+        """
+        # Import here to avoid circular imports
+        from .scheduler import CompactionScheduler
+
+        if (
+            self._compaction_scheduler is not None
+            and self._compaction_scheduler.is_running
+        ):
+            logger.warning("Auto-compaction is already running")
+            return self._compaction_scheduler
+
+        self._compaction_scheduler = CompactionScheduler(
+            bitcask=self,
+            interval_seconds=interval_seconds,
+            threshold_ratio=threshold_ratio,
+            on_compaction_complete=on_compaction_complete,
+        )
+        self._compaction_scheduler.start()
+        return self._compaction_scheduler
+
+    def stop_auto_compaction(self, timeout: Optional[float] = 5.0) -> bool:
+        """Stop automatic background compaction.
+
+        Args:
+        ----
+            timeout: Maximum time to wait for the scheduler to stop (default: 5s).
+
+        Returns:
+        -------
+            True if stopped successfully, False if timed out.
+
+        """
+        if self._compaction_scheduler is None:
+            return True
+
+        result = self._compaction_scheduler.stop(timeout=timeout)
+        if result:
+            self._compaction_scheduler = None
+        return result
+
+    @property
+    def auto_compaction_running(self) -> bool:
+        """Check if automatic compaction is currently running."""
+        return (
+            self._compaction_scheduler is not None
+            and self._compaction_scheduler.is_running
+        )
 
     def clear(self) -> None:
         """Delete all data and start fresh."""
@@ -410,31 +540,32 @@ class Bitcask:
             - estimated_dead_ratio: Ratio of dead/stale data (0.0 to 1.0)
 
         """
-        data_files = list(self.data_dir.glob("data_*.db"))
-        total_size = sum(f.stat().st_size for f in data_files)
-        live_keys = len(self.index)
+        with self._lock:
+            data_files = list(self.data_dir.glob("data_*.db"))
+            total_size = sum(f.stat().st_size for f in data_files)
+            live_keys = len(self.index)
 
-        # Estimate live data size based on index entries
-        estimated_live_size = 0
-        for key, entry in self.index.items():
-            # Add record overhead (format identifier, size prefix, metadata)
-            overhead = 20  # Approximate overhead per record
-            estimated_live_size += entry["value_size"] + len(key) + overhead
+            # Estimate live data size based on index entries
+            estimated_live_size = 0
+            for key, entry in self.index.items():
+                # Add record overhead (format identifier, size prefix, metadata)
+                overhead = 20  # Approximate overhead per record
+                estimated_live_size += entry["value_size"] + len(key) + overhead
 
-        # Calculate dead data ratio
-        estimated_dead_ratio = 0.0
-        if total_size > 0:
-            estimated_dead_ratio = max(
-                0.0, (total_size - estimated_live_size) / total_size
-            )
+            # Calculate dead data ratio
+            estimated_dead_ratio = 0.0
+            if total_size > 0:
+                estimated_dead_ratio = max(
+                    0.0, (total_size - estimated_live_size) / total_size
+                )
 
-        return {
-            "total_files": len(data_files),
-            "total_size": total_size,
-            "live_keys": live_keys,
-            "estimated_live_size": estimated_live_size,
-            "estimated_dead_ratio": estimated_dead_ratio,
-        }
+            return {
+                "total_files": len(data_files),
+                "total_size": total_size,
+                "live_keys": live_keys,
+                "estimated_live_size": estimated_live_size,
+                "estimated_dead_ratio": estimated_dead_ratio,
+            }
 
     def should_compact(self, threshold_ratio: float = 0.3) -> bool:
         """Check if compaction should be performed.
