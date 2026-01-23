@@ -1,7 +1,6 @@
 """Implementation of the Bitcask key-value store."""
 
 # -*- coding: utf-8 -*-
-import json
 import logging
 import os
 import threading
@@ -263,7 +262,7 @@ class Bitcask:
                         ):
                             self.index[key] = {
                                 "file_id": file_id,
-                                "value_size": len(json.dumps(value).encode()),
+                                "value_size": record_size,
                                 "value_pos": f.tell() - record_size,
                                 "timestamp": timestamp,
                             }
@@ -300,7 +299,7 @@ class Bitcask:
             # Update index with current file info
             self.index[key] = {
                 "file_id": self.active_file_id,
-                "value_size": len(json.dumps(value).encode()),
+                "value_size": len(record),
                 "value_pos": record_pos,
                 "timestamp": timestamp,
             }
@@ -399,7 +398,7 @@ class Bitcask:
                 # Update index
                 self.index[key] = {
                     "file_id": self.active_file_id,
-                    "value_size": len(json.dumps(value).encode()),
+                    "value_size": len(record),
                     "value_pos": record_pos,
                     "timestamp": timestamp,
                 }
@@ -546,11 +545,10 @@ class Bitcask:
             live_keys = len(self.index)
 
             # Estimate live data size based on index entries
-            estimated_live_size = 0
-            for key, entry in self.index.items():
-                # Add record overhead (format identifier, size prefix, metadata)
-                overhead = 20  # Approximate overhead per record
-                estimated_live_size += entry["value_size"] + len(key) + overhead
+            # value_size now stores the full serialized record size
+            estimated_live_size = sum(
+                entry["value_size"] for entry in self.index.values()
+            )
 
             # Calculate dead data ratio
             estimated_dead_ratio = 0.0
